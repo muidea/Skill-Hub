@@ -2,6 +2,18 @@
 
 一款专为 AI 时代开发者设计的"技能（Prompt/Script）生命周期管理工具"。它旨在解决 AI 指令碎片化、跨工具同步难、缺乏版本控制等痛点。
 
+## 🚀 快速安装
+
+**一键安装（Linux/macOS）**：
+```bash
+curl -s https://raw.githubusercontent.com/muidea/skill-hub/main/scripts/download-latest.sh | bash
+```
+
+**或手动下载**：
+1. 访问 [GitHub Releases](https://github.com/muidea/skill-hub/releases)
+2. 下载对应平台的压缩包
+3. 解压并运行
+
 ## 核心理念
 
 - **Git 为中心**：所有技能存储在Git仓库中，作为单一可信源
@@ -19,17 +31,68 @@
 
 ## 快速开始
 
-### 安装
+### 安装方式
+
+#### 方式一：使用预编译二进制（推荐）
+
+1. **访问 [GitHub Releases](https://github.com/muidea/skill-hub/releases)** 页面
+2. **下载对应平台的压缩包**：
+   - Linux: `skill-hub-linux-amd64.tar.gz` 或 `skill-hub-linux-arm64.tar.gz`
+   - macOS: `skill-hub-darwin-amd64.tar.gz` 或 `skill-hub-darwin-arm64.tar.gz`
+   - Windows: `skill-hub-windows-amd64.tar.gz` 或 `skill-hub-windows-arm64.tar.gz`
+
+3. **解压并安装**：
+
+   **Linux/macOS**:
+   ```bash
+   # 下载
+   wget https://github.com/muidea/skill-hub/releases/download/v1.0.0/skill-hub-linux-amd64.tar.gz
+   
+   # 解压
+   tar -xzf skill-hub-linux-amd64.tar.gz
+   
+   # 验证校验和（可选）
+   sha256sum -c skill-hub-linux-amd64.sha256
+   
+   # 安装到系统路径
+   sudo cp skill-hub /usr/local/bin/
+   
+   # 或直接运行
+   ./skill-hub --help
+   ```
+
+   **Windows**:
+   ```powershell
+   # 下载并解压
+   # 将 skill-hub.exe 添加到系统 PATH
+   # 或在解压目录中运行
+   .\skill-hub.exe --help
+   ```
+
+#### 方式二：从源码编译
 
 ```bash
-# 从源码编译
-git clone <repository-url>
+# 克隆仓库
+git clone https://github.com/muidea/skill-hub.git
 cd skill-hub
+
+# 编译
 make build
+
+# 安装到系统
 sudo make install
 
-# 或直接使用二进制
-./skill-hub --help
+# 或直接使用
+./bin/skill-hub --help
+```
+
+#### 方式三：使用包管理器（待支持）
+
+```bash
+# 未来可能支持
+# brew install skill-hub  # macOS
+# apt install skill-hub   # Ubuntu/Debian
+# yum install skill-hub   # CentOS/RHEL
 ```
 
 ### 基本使用
@@ -238,10 +301,85 @@ GitHub Actions将自动：
 - `skill-hub-{platform}-{arch}.sha256` - 校验和文件
 - `checksums.txt` - 所有文件的校验和汇总
 
+### 下载和使用预编译二进制
+
+#### 快速下载脚本（Linux/macOS）
+
+```bash
+# 自动检测系统架构并下载最新版本
+curl -s https://raw.githubusercontent.com/muidea/skill-hub/main/scripts/download-latest.sh | bash
+
+# 或指定版本
+VERSION="v1.0.0"
+curl -s https://raw.githubusercontent.com/muidea/skill-hub/main/scripts/download-latest.sh | bash -s -- $VERSION
+```
+
+#### 手动下载步骤
+
+1. **确定系统信息**：
+   ```bash
+   # Linux/macOS
+   uname -s -m
+   # 输出示例: Linux x86_64, Darwin arm64
+   
+   # Windows PowerShell
+   $env:PROCESSOR_ARCHITECTURE
+   ```
+
+2. **选择对应文件**：
+   - Linux x86_64: `skill-hub-linux-amd64.tar.gz`
+   - Linux arm64: `skill-hub-linux-arm64.tar.gz`
+   - macOS x86_64: `skill-hub-darwin-amd64.tar.gz`
+   - macOS arm64: `skill-hub-darwin-arm64.tar.gz`
+   - Windows x64: `skill-hub-windows-amd64.tar.gz`
+   - Windows arm64: `skill-hub-windows-arm64.tar.gz`
+
+3. **验证文件完整性**：
+   ```bash
+   # 下载校验和文件
+   wget https://github.com/muidea/skill-hub/releases/download/v1.0.0/skill-hub-linux-amd64.sha256
+   
+   # 验证
+   sha256sum -c skill-hub-linux-amd64.sha256
+   ```
+
+#### 安装到系统路径
+
+**Linux/macOS**:
+```bash
+# 解压
+tar -xzf skill-hub-linux-amd64.tar.gz
+
+# 查看内容
+ls -la skill-hub-linux-amd64/
+# 包含: skill-hub (二进制), README.md, LICENSE, .sha256文件
+
+# 安装到系统路径（需要sudo权限）
+sudo cp skill-hub-linux-amd64/skill-hub /usr/local/bin/
+
+# 或安装到用户目录
+mkdir -p ~/.local/bin
+cp skill-hub-linux-amd64/skill-hub ~/.local/bin/
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# 验证安装
+skill-hub --version
+```
+
+**Windows**:
+```powershell
+# 解压压缩包
+# 将 skill-hub.exe 所在目录添加到系统 PATH 环境变量
+
+# 或在解压目录中直接运行
+.\skill-hub.exe --help
+```
+
 ## CI/CD状态
 
-[![CI](https://github.com/your-username/skill-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/skill-hub/actions/workflows/ci.yml)
-[![Release](https://github.com/your-username/skill-hub/actions/workflows/release.yml/badge.svg)](https://github.com/your-username/skill-hub/actions/workflows/release.yml)
+[![CI](https://github.com/muidea/skill-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/muidea/skill-hub/actions/workflows/ci.yml)
+[![Release](https://github.com/muidea/skill-hub/actions/workflows/release.yml/badge.svg)](https://github.com/muidea/skill-hub/actions/workflows/release.yml)
 
 ## 许可证
 
