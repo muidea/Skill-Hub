@@ -56,6 +56,10 @@ jobs:
           for file in skill-hub-*; do
             sha256sum "$file" > "$file.sha256"
           done
+          
+          # 为Windows文件创建正确的校验和文件名
+          mv skill-hub-windows-amd64.exe.sha256 skill-hub-windows-amd64.sha256
+          mv skill-hub-windows-arm64.exe.sha256 skill-hub-windows-arm64.sha256
 
       - name: Create release archive
         run: |
