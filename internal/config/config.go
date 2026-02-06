@@ -1,0 +1,106 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	RepoPath         string `mapstructure:"repo_path"`
+	ClaudeConfigPath string `mapstructure:"claude_config_path"`
+	DefaultTool      string `mapstructure:"default_tool"`
+}
+
+var (
+	globalConfig *Config
+	configLoaded = false
+)
+
+// GetConfig 返回全局配置，如果未加载则先加载
+func GetConfig() (*Config, error) {
+	if !configLoaded {
+		if err := LoadConfig(); err != nil {
+			return nil, err
+		}
+	}
+	return globalConfig, nil
+}
+
+// LoadConfig 加载配置文件
+func LoadConfig() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("获取用户主目录失败: %w", err)
+	}
+
+	configDir := filepath.Join(homeDir, ".skill-hub")
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	// 检查配置文件是否存在
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		return fmt.Errorf("配置文件不存在，请先运行 'skill-hub init'")
+	}
+
+	viper.SetConfigFile(configFile)
+	viper.SetConfigType("yaml")
+
+	// 设置默认值
+	viper.SetDefault("repo_path", filepath.Join(configDir, "repo"))
+	viper.SetDefault("claude_config_path", filepath.Join(homeDir, ".claude", "config.json"))
+	viper.SetDefault("default_tool", "cursor")
+
+	if err := viper.ReadInConfig(); err != nil {
+		return fmt.Errorf("读取配置文件失败: %w", err)
+	}
+
+	globalConfig = &Config{}
+	if err := viper.Unmarshal(globalConfig); err != nil {
+		return fmt.Errorf("解析配置文件失败: %w", err)
+	}
+
+	configLoaded = true
+	return nil
+}
+
+// GetRepoPath 获取仓库路径
+func GetRepoPath() (string, error) {
+	cfg, err := GetConfig()
+	if err != nil {
+		return "", err
+	}
+	return expandPath(cfg.RepoPath), nil
+}
+
+// expandPath 展开路径中的~为用户主目录
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		return filepath.Join(homeDir, path[2:])
+	}
+	return path
+}
+
+// GetSkillsDir 获取技能目录路径
+func GetSkillsDir() (string, error) {
+	repoPath, err := GetRepoPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(repoPath, "skills"), nil
+}
+
+// GetRegistryPath 获取索引文件路径
+func GetRegistryPath() (string, error) {
+	repoPath, err := GetRepoPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(repoPath, "registry.json"), nil
+}
