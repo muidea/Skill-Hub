@@ -70,8 +70,8 @@ func runApply() error {
 			// 未绑定项目
 			fmt.Println("❌ 当前目录未关联目标")
 			fmt.Println("请先执行以下操作之一:")
-			fmt.Printf("  1. 使用 'skill-hub set-target [%s|%s]' 设置首选目标\n", spec.TargetCursor, spec.TargetClaudeCode)
-			fmt.Printf("  2. 使用 'skill-hub use [skill-id] --target [%s|%s]' 启用技能并指定目标\n", spec.TargetCursor, spec.TargetClaudeCode)
+			fmt.Printf("  1. 使用 'skill-hub set-target [%s|%s|%s]' 设置首选目标\n", spec.TargetCursor, spec.TargetClaudeCode, spec.TargetOpenCode)
+			fmt.Printf("  2. 使用 'skill-hub use [skill-id] --target [%s|%s|%s]' 启用技能并指定目标\n", spec.TargetCursor, spec.TargetClaudeCode, spec.TargetOpenCode)
 			fmt.Printf("  3. 使用 'skill-hub apply --target [%s|%s|%s|%s]' 显式指定目标\n", spec.TargetCursor, spec.TargetClaudeCode, spec.TargetOpenCode, spec.TargetAll)
 			return nil
 		}

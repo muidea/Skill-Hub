@@ -84,6 +84,9 @@ func NormalizeTarget(target string) string {
 	if target == TargetClaude {
 		return TargetClaudeCode
 	}
+	if target == "opencode" {
+		return TargetOpenCode
+	}
 	return target
 }
 

@@ -54,6 +54,8 @@ func runStatus() error {
 		targetName := "Cursor"
 		if normalizedTarget == spec.TargetClaudeCode {
 			targetName = "Claude Code"
+		} else if normalizedTarget == spec.TargetOpenCode {
+			targetName = "OpenCode"
 		}
 		fmt.Printf("Context Detected: %s | Project: %s\n", targetName, cwd)
 	} else {
@@ -71,38 +73,90 @@ func runStatus() error {
 		return nil
 	}
 
-	// 创建适配器
-	adapters := []struct {
+	// 根据preferred_target确定要检查的适配器
+	var adapters []struct {
 		name     string
 		adapter  adapter.Adapter
 		filePath string
-	}{
-		{"Cursor", cursor.NewCursorAdapter(), ""},
-		{"Claude", claude.NewClaudeAdapter(), ""},
-		{"OpenCode", opencode.NewOpenCodeAdapter(), ""},
+		mode     string
+	}
+
+	// 如果没有preferred_target，检查所有适配器
+	if projectState == nil || projectState.PreferredTarget == "" {
+		// 检查所有适配器
+		adapters = []struct {
+			name     string
+			adapter  adapter.Adapter
+			filePath string
+			mode     string
+		}{
+			{"Cursor", cursor.NewCursorAdapter().WithGlobalMode(), "", "global"},
+			{"Claude", claude.NewClaudeAdapter().WithGlobalMode(), "", "global"},
+			{"OpenCode", opencode.NewOpenCodeAdapter().WithGlobalMode(), "", "global"},
+		}
+	} else {
+		// 根据preferred_target检查对应的适配器
+		normalizedTarget := spec.NormalizeTarget(projectState.PreferredTarget)
+		switch normalizedTarget {
+		case spec.TargetCursor:
+			adapters = []struct {
+				name     string
+				adapter  adapter.Adapter
+				filePath string
+				mode     string
+			}{
+				{"Cursor", cursor.NewCursorAdapter().WithGlobalMode(), "", "global"},
+			}
+		case spec.TargetClaudeCode:
+			adapters = []struct {
+				name     string
+				adapter  adapter.Adapter
+				filePath string
+				mode     string
+			}{
+				{"Claude", claude.NewClaudeAdapter().WithGlobalMode(), "", "global"},
+			}
+		case spec.TargetOpenCode:
+			// 对于OpenCode，同时检查项目级和全局级
+			adapters = []struct {
+				name     string
+				adapter  adapter.Adapter
+				filePath string
+				mode     string
+			}{
+				{"OpenCode (项目)", opencode.NewOpenCodeAdapter().WithProjectMode(), "", "project"},
+				{"OpenCode (全局)", opencode.NewOpenCodeAdapter().WithGlobalMode(), "", "global"},
+			}
+		default:
+			// 未知目标，检查所有适配器
+			adapters = []struct {
+				name     string
+				adapter  adapter.Adapter
+				filePath string
+				mode     string
+			}{
+				{"Cursor", cursor.NewCursorAdapter().WithGlobalMode(), "", "global"},
+				{"Claude", claude.NewClaudeAdapter().WithGlobalMode(), "", "global"},
+				{"OpenCode", opencode.NewOpenCodeAdapter().WithGlobalMode(), "", "global"},
+			}
+		}
 	}
 
 	// 检查文件是否存在并获取路径
 	for i := range adapters {
 		// 对于Cursor适配器，需要特殊处理获取路径
 		if cursorAdapter, ok := adapters[i].adapter.(*cursor.CursorAdapter); ok {
-			// 设置全局模式以获取路径
-			cursorAdapter.WithGlobalMode()
 			path, err := cursorAdapter.GetFilePath()
 			if err == nil {
 				adapters[i].filePath = path
 			}
 		} else if claudeAdapter, ok := adapters[i].adapter.(*claude.ClaudeAdapter); ok {
-			// Claude适配器需要设置模式
-			claudeAdapter.WithGlobalMode()
 			// 获取配置路径
 			path, err := claudeAdapter.GetConfigPath()
 			if err == nil {
 				adapters[i].filePath = path
 			}
 		} else if opencodeAdapter, ok := adapters[i].adapter.(*opencode.OpenCodeAdapter); ok {
-			// OpenCode适配器需要设置模式
-			opencodeAdapter.WithGlobalMode()
 			// 获取技能目录路径
 			path, err := opencodeAdapter.GetSkillsPath()
 			if err == nil {
@@ -126,10 +180,24 @@ func runStatus() error {
 		adpt := adapterInfo.adapter
 		filePath := adapterInfo.filePath
 
-		// 检查文件是否存在
+		// 检查文件/目录是否存在
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			fmt.Printf("\nℹ️  未找到 %s 配置文件: %s\n", adapterName, filePath)
-			fmt.Printf("   使用 'skill-hub apply --target %s' 应用技能\n", strings.ToLower(adapterName))
+			// 对于OpenCode，检查的是技能目录
+			if strings.Contains(adapterName, "OpenCode") {
+				fmt.Printf("\nℹ️  未找到 %s 技能目录: %s\n", adapterName, filePath)
+			} else {
+				fmt.Printf("\nℹ️  未找到 %s 配置文件: %s\n", adapterName, filePath)
+			}
+
+			// 显示应用命令提示
+			baseName := strings.Split(adapterName, " ")[0]
+			targetName := strings.ToLower(baseName)
+			if targetName == "opencode" {
+				targetName = "open_code"
+			} else if targetName == "claude" {
+				targetName = "claude_code"
+			}
+			fmt.Printf("   使用 'skill-hub apply --target %s' 应用技能\n", targetName)
 			continue
 		}
 
@@ -154,6 +222,11 @@ func runStatus() error {
 			fileContent, err := adpt.Extract(skillID)
 			if err != nil {
 				// 技能未在该适配器中应用
+				continue
+			}
+
+			// 如果文件内容为空，表示技能未应用到该适配器
+			if fileContent == "" {
 				continue
 			}
 
@@ -249,6 +322,9 @@ func checkAdapterSupport(adpt adapter.Adapter, skill *spec.Skill) bool {
 	}
 	if _, ok := adpt.(*claude.ClaudeAdapter); ok {
 		return skill.Compatibility.ClaudeCode
+	}
+	if _, ok := adpt.(*opencode.OpenCodeAdapter); ok {
+		return skill.Compatibility.OpenCode
 	}
 	return false
 }

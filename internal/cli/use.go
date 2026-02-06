@@ -20,7 +20,7 @@ var useCmd = &cobra.Command{
 	Short: "在当前项目启用技能",
 	Long: `在当前项目启用指定技能，并提示输入变量值。
 
-使用 --target 参数指定首选目标工具 (cursor/claude)。
+使用 --target 参数指定首选目标工具 (cursor/claude_code/open_code)。
 如果项目尚未绑定目标，此参数将设置项目的首选目标。`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -29,7 +29,7 @@ var useCmd = &cobra.Command{
 }
 
 func init() {
-	useCmd.Flags().StringVar(&useTarget, "target", "", "首选目标工具: cursor, claude_code")
+	useCmd.Flags().StringVar(&useTarget, "target", "", "首选目标工具: cursor, claude_code, open_code")
 }
 
 func runUse(skillID string) error {

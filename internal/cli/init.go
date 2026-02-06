@@ -88,6 +88,7 @@ tags: ["git", "workflow"]
 compatibility:
   cursor: true
   claude_code: false
+  open_code: false
 variables:
   - name: "LANGUAGE"
     default: "zh-CN"
@@ -140,6 +141,7 @@ tags: ["claude", "code-review", "quality"]
 compatibility:
   cursor: false
   claude_code: true
+  open_code: false
 variables:
   - name: "REVIEW_STYLE"
     default: "detailed"
@@ -199,7 +201,8 @@ claude:
       "tags": ["git", "workflow"],
       "compatibility": {
         "cursor": true,
-        "claude_code": false
+        "claude_code": false,
+        "open_code": false
       }
     },
     {
@@ -211,7 +214,8 @@ claude:
       "tags": ["claude", "code-review", "quality"],
       "compatibility": {
         "cursor": false,
-        "claude_code": true
+        "claude_code": true,
+        "open_code": false
       }
     }
   ]

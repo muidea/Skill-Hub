@@ -121,7 +121,6 @@ func runRemove(skillID string) error {
 		return err
 	}
 	skillVars, skillEnabled := projectSkills[skillID]
-	fmt.Printf("[DEBUG] 技能 %s 启用状态: %v\n", skillID, skillEnabled)
 
 	// 安全检查：检测本地修改（仅当技能已启用时）
 	if !forceRemove && skillEnabled {
@@ -182,13 +181,10 @@ func runRemove(skillID string) error {
 	// 更新状态：从项目中移除技能（仅当技能已启用时）
 	if skillEnabled {
 		fmt.Println("\n=== 更新状态 ===")
-		fmt.Printf("[DEBUG] 准备从状态移除技能: %s\n", skillID)
 		if err := stateMgr.RemoveSkillFromProject(cwd, skillID); err != nil {
 			return fmt.Errorf("更新状态失败: %w", err)
 		}
 		fmt.Printf("✓ 成功从项目状态移除技能 %s\n", skillID)
-	} else {
-		fmt.Printf("[DEBUG] 技能 %s 未启用，跳过状态更新\n", skillID)
 	}
 
 	fmt.Println("\n🎉 技能移除完成")
