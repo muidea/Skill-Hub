@@ -20,6 +20,9 @@ var rootCmd = &cobra.Command{
 
 核心理念：Git 为中心，一键分发，闭环反馈。`,
 	Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
+	CompletionOptions: cobra.CompletionOptions{
+		DisableDefaultCmd: true,
+	},
 }
 
 func Execute() error {
