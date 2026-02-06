@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/cobra"
 	"skill-hub/internal/adapter"
 	"skill-hub/internal/adapter/claude"
 	"skill-hub/internal/adapter/cursor"
 	"skill-hub/internal/engine"
 	"skill-hub/internal/state"
 	"skill-hub/pkg/spec"
+
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -54,9 +55,10 @@ func runApply() error {
 
 	// 确定目标工具
 	resolvedTarget := target
-	if resolvedTarget == spec.TargetAll {
+	switch resolvedTarget {
+	case spec.TargetAll:
 		// 如果指定了all，直接使用all
-	} else if resolvedTarget == "" {
+	case "":
 		// 如果没有指定target，尝试从状态获取
 		projectState, err := stateMgr.FindProjectByPath(cwd)
 		if err != nil {

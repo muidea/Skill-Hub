@@ -6,14 +6,15 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 	"skill-hub/internal/adapter/claude"
 	"skill-hub/internal/adapter/cursor"
 	"skill-hub/internal/engine"
 	"skill-hub/internal/state"
 	"skill-hub/internal/template"
 	"skill-hub/pkg/spec"
+
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -87,7 +88,8 @@ func runFeedback(skillID string) error {
 	tryCursor := false
 	tryClaude := false
 
-	if adapterTarget == "auto" {
+	switch adapterTarget {
+	case "auto":
 		// 自动模式：首先尝试项目的首选目标
 		projectState, err := stateManager.FindProjectByPath(cwd)
 		if err != nil {
@@ -113,17 +115,17 @@ func runFeedback(skillID string) error {
 			tryCursor = skill.Compatibility.Cursor
 			tryClaude = skill.Compatibility.ClaudeCode
 		}
-	} else if adapterTarget == spec.TargetCursor {
+	case spec.TargetCursor:
 		tryCursor = true
 		if !skill.Compatibility.Cursor {
 			return fmt.Errorf("技能 '%s' 不支持 Cursor 适配器", skillID)
 		}
-	} else if adapterTarget == spec.TargetClaudeCode {
+	case spec.TargetClaudeCode:
 		tryClaude = true
 		if !skill.Compatibility.ClaudeCode {
 			return fmt.Errorf("技能 '%s' 不支持 Claude Code 适配器", skillID)
 		}
-	} else {
+	default:
 		return fmt.Errorf("无效的适配器目标: %s，可用选项: %s, %s, auto", adapterTarget, spec.TargetCursor, spec.TargetClaudeCode)
 	}
 
