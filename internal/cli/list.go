@@ -48,6 +48,9 @@ func runList() error {
 		if skill.Compatibility.Shell {
 			tools = append(tools, "shell")
 		}
+		if skill.Compatibility.OpenCode {
+			tools = append(tools, "opencode")
+		}
 
 		toolsStr := ""
 		if len(tools) > 0 {

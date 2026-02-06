@@ -10,6 +10,7 @@ import (
 	"skill-hub/internal/adapter"
 	"skill-hub/internal/adapter/claude"
 	"skill-hub/internal/adapter/cursor"
+	"skill-hub/internal/adapter/opencode"
 	"skill-hub/internal/engine"
 	"skill-hub/internal/state"
 	"skill-hub/pkg/spec"
@@ -32,7 +33,7 @@ var removeCmd = &cobra.Command{
 2. 从目标工具配置文件中物理清理技能内容
 3. 如果检测到本地修改，会提示警告
 
-使用 --target 参数指定目标工具 (cursor/claude_code/all)。
+使用 --target 参数指定目标工具 (cursor/claude_code/open_code/all)。
 使用 --force 参数跳过安全检查。`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -41,7 +42,7 @@ var removeCmd = &cobra.Command{
 }
 
 func init() {
-	removeCmd.Flags().StringVar(&removeTarget, "target", "", "目标工具: cursor, claude_code, all (为空时使用状态绑定的目标)")
+	removeCmd.Flags().StringVar(&removeTarget, "target", "", "目标工具: cursor, claude_code, open_code, all (为空时使用状态绑定的目标)")
 	removeCmd.Flags().BoolVar(&forceRemove, "force", false, "跳过安全检查，强制移除")
 }
 
@@ -60,13 +61,13 @@ func runRemove(skillID string) error {
 		return err
 	}
 
-	// 检查技能是否在项目中启用
+	// 检查技能是否在项目中启用（仅用于信息提示）
 	hasSkill, err := stateMgr.ProjectHasSkill(cwd, skillID)
 	if err != nil {
 		return fmt.Errorf("检查技能状态失败: %w", err)
 	}
 	if !hasSkill {
-		return fmt.Errorf("技能 %s 未在当前项目中启用", skillID)
+		fmt.Printf("ℹ️  技能 %s 未在当前项目中启用，仅清理目标工具中的残留文件\n", skillID)
 	}
 
 	// 获取项目状态以确定目标
@@ -88,6 +89,7 @@ func runRemove(skillID string) error {
 		fmt.Println("请使用 --target 参数指定目标工具:")
 		fmt.Printf("  skill-hub remove %s --target cursor\n", skillID)
 		fmt.Printf("  skill-hub remove %s --target claude_code\n", skillID)
+		fmt.Printf("  skill-hub remove %s --target open_code\n", skillID)
 		fmt.Printf("  skill-hub remove %s --target all\n", skillID)
 		return nil
 	}
@@ -110,7 +112,7 @@ func runRemove(skillID string) error {
 	// 根据目标选择适配器
 	adapters := selectAdapters(resolvedTarget, "project")
 	if len(adapters) == 0 {
-		return fmt.Errorf("无效的目标工具: %s，可用选项: %s, %s, %s", resolvedTarget, spec.TargetCursor, spec.TargetClaudeCode, spec.TargetAll)
+		return fmt.Errorf("无效的目标工具: %s，可用选项: %s, %s, %s, %s", resolvedTarget, spec.TargetCursor, spec.TargetClaudeCode, spec.TargetOpenCode, spec.TargetAll)
 	}
 
 	// 获取项目技能变量
@@ -118,10 +120,11 @@ func runRemove(skillID string) error {
 	if err != nil {
 		return err
 	}
-	skillVars := projectSkills[skillID]
+	skillVars, skillEnabled := projectSkills[skillID]
+	fmt.Printf("[DEBUG] 技能 %s 启用状态: %v\n", skillID, skillEnabled)
 
-	// 安全检查：检测本地修改
-	if !forceRemove {
+	// 安全检查：检测本地修改（仅当技能已启用时）
+	if !forceRemove && skillEnabled {
 		hasModifications, err := checkSkillModifications(adapters, skillID, skillManager, skillVars.Variables)
 		if err != nil {
 			fmt.Printf("⚠️  安全检查失败: %v\n", err)
@@ -176,13 +179,18 @@ func runRemove(skillID string) error {
 		fmt.Printf("\n✅ 技能已从以下适配器清理: %s\n", strings.Join(removedFromAdapters, ", "))
 	}
 
-	// 更新状态：从项目中移除技能
-	fmt.Println("\n=== 更新状态 ===")
-	if err := stateMgr.RemoveSkillFromProject(cwd, skillID); err != nil {
-		return fmt.Errorf("更新状态失败: %w", err)
+	// 更新状态：从项目中移除技能（仅当技能已启用时）
+	if skillEnabled {
+		fmt.Println("\n=== 更新状态 ===")
+		fmt.Printf("[DEBUG] 准备从状态移除技能: %s\n", skillID)
+		if err := stateMgr.RemoveSkillFromProject(cwd, skillID); err != nil {
+			return fmt.Errorf("更新状态失败: %w", err)
+		}
+		fmt.Printf("✓ 成功从项目状态移除技能 %s\n", skillID)
+	} else {
+		fmt.Printf("[DEBUG] 技能 %s 未启用，跳过状态更新\n", skillID)
 	}
 
-	fmt.Printf("✓ 成功从项目状态移除技能 %s\n", skillID)
 	fmt.Println("\n🎉 技能移除完成")
 	fmt.Println("使用 'skill-hub status' 检查当前状态")
 
@@ -211,6 +219,16 @@ func selectAdapters(target string, mode string) []adapter.Adapter {
 			claudeAdapter = claudeAdapter.WithProjectMode()
 		}
 		adapters = append(adapters, claudeAdapter)
+	}
+
+	if target == spec.TargetAll || target == spec.TargetOpenCode {
+		opencodeAdapter := opencode.NewOpenCodeAdapter()
+		if mode == "global" {
+			opencodeAdapter = opencodeAdapter.WithGlobalMode()
+		} else {
+			opencodeAdapter = opencodeAdapter.WithProjectMode()
+		}
+		adapters = append(adapters, opencodeAdapter)
 	}
 
 	return adapters

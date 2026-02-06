@@ -11,15 +11,16 @@ import (
 )
 
 var setTargetCmd = &cobra.Command{
-	Use:   "set-target [cursor|claude]",
+	Use:   "set-target [cursor|claude|opencode]",
 	Short: "设置当前项目的首选目标",
-	Long: `设置当前项目的首选目标（Cursor 或 Claude）。
+	Long: `设置当前项目的首选目标（Cursor、Claude 或 OpenCode）。
 
 此命令会更新项目状态，使后续的 apply、feedback 等命令自动使用指定的目标适配器。
 
 示例:
   skill-hub set-target cursor    # 设置为 Cursor
   skill-hub set-target claude    # 设置为 Claude
+  skill-hub set-target opencode  # 设置为 OpenCode
   skill-hub set-target ""        # 清除目标设置`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -39,8 +40,8 @@ func runSetTarget(target string) error {
 	}
 
 	// 验证目标值
-	if target != spec.TargetCursor && target != spec.TargetClaudeCode && target != "" {
-		return fmt.Errorf("无效的目标值: %s，可用选项: %s, %s", target, spec.TargetCursor, spec.TargetClaudeCode)
+	if target != spec.TargetCursor && target != spec.TargetClaudeCode && target != spec.TargetOpenCode && target != "" {
+		return fmt.Errorf("无效的目标值: %s，可用选项: %s, %s, %s", target, spec.TargetCursor, spec.TargetClaudeCode, spec.TargetOpenCode)
 	}
 
 	// 创建状态管理器

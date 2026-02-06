@@ -133,10 +133,28 @@ func (m *SkillManager) loadSkillFromMarkdown(mdPath, skillID string) (*spec.Skil
 		}
 	}
 
-	// 设置兼容性（默认为所有工具）
+	// 设置兼容性
 	skill.Compatibility = spec.Compatibility{
 		Cursor:     true,
 		ClaudeCode: true,
+		OpenCode:   false,
+		Shell:      false,
+	}
+
+	// 从YAML读取兼容性设置
+	if compatData, ok := skillData["compatibility"].(map[string]interface{}); ok {
+		if cursorVal, ok := compatData["cursor"].(bool); ok {
+			skill.Compatibility.Cursor = cursorVal
+		}
+		if claudeVal, ok := compatData["claude_code"].(bool); ok {
+			skill.Compatibility.ClaudeCode = claudeVal
+		}
+		if openCodeVal, ok := compatData["open_code"].(bool); ok {
+			skill.Compatibility.OpenCode = openCodeVal
+		}
+		if shellVal, ok := compatData["shell"].(bool); ok {
+			skill.Compatibility.Shell = shellVal
+		}
 	}
 
 	return skill, nil

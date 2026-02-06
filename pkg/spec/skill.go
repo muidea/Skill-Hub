@@ -33,6 +33,7 @@ type ToolSpec struct {
 type Compatibility struct {
 	Cursor     bool `yaml:"cursor" json:"cursor"`
 	ClaudeCode bool `yaml:"claude_code" json:"claude_code"`
+	OpenCode   bool `yaml:"open_code" json:"open_code"` // OpenCode支持
 	Shell      bool `yaml:"shell" json:"shell"`
 }
 
@@ -72,7 +73,8 @@ type ProjectConfig struct {
 const (
 	TargetCursor     = "cursor"
 	TargetClaudeCode = "claude_code"
-	TargetClaude     = "claude" // 向后兼容
+	TargetOpenCode   = "open_code" // OpenCode支持
+	TargetClaude     = "claude"    // 向后兼容
 	TargetUnknown    = "unknown"
 	TargetAll        = "all"
 )

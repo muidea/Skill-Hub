@@ -8,6 +8,7 @@ import (
 
 	"skill-hub/internal/adapter/claude"
 	"skill-hub/internal/adapter/cursor"
+	"skill-hub/internal/adapter/opencode"
 	"skill-hub/internal/engine"
 	"skill-hub/internal/state"
 	"skill-hub/internal/template"
@@ -26,7 +27,7 @@ var feedbackCmd = &cobra.Command{
 	Short: "将项目内的手动修改反馈回技能仓库",
 	Long: `将项目配置文件中手动修改的技能内容反向更新到本地技能仓库。
 
-使用 --adapter 参数指定从哪个工具配置文件提取内容 (cursor/claude/auto)。
+使用 --adapter 参数指定从哪个工具配置文件提取内容 (cursor/claude/opencode/auto)。
 默认为 auto，会自动检测技能支持的工具。`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -35,7 +36,7 @@ var feedbackCmd = &cobra.Command{
 }
 
 func init() {
-	feedbackCmd.Flags().StringVar(&adapterTarget, "adapter", "auto", "目标适配器: cursor, claude, auto")
+	feedbackCmd.Flags().StringVar(&adapterTarget, "adapter", "auto", "适配器目标: cursor, claude, opencode, auto")
 }
 
 func runFeedback(skillID string) error {
@@ -87,6 +88,7 @@ func runFeedback(skillID string) error {
 	// 确定要尝试的适配器顺序
 	tryCursor := false
 	tryClaude := false
+	tryOpenCode := false
 
 	switch adapterTarget {
 	case "auto":
@@ -105,15 +107,20 @@ func runFeedback(skillID string) error {
 			} else if normalizedTarget == spec.TargetClaudeCode && skill.Compatibility.ClaudeCode {
 				tryClaude = true
 				fmt.Printf("🔍 使用项目首选目标: Claude Code\n")
+			} else if normalizedTarget == spec.TargetOpenCode && skill.Compatibility.OpenCode {
+				tryOpenCode = true
+				fmt.Printf("🔍 使用项目首选目标: OpenCode\n")
 			} else {
 				// 首选目标不支持，回退到技能兼容性
 				tryCursor = skill.Compatibility.Cursor
 				tryClaude = skill.Compatibility.ClaudeCode
+				tryOpenCode = skill.Compatibility.OpenCode
 			}
 		} else {
 			// 没有首选目标，根据技能兼容性尝试
 			tryCursor = skill.Compatibility.Cursor
 			tryClaude = skill.Compatibility.ClaudeCode
+			tryOpenCode = skill.Compatibility.OpenCode
 		}
 	case spec.TargetCursor:
 		tryCursor = true
@@ -125,8 +132,13 @@ func runFeedback(skillID string) error {
 		if !skill.Compatibility.ClaudeCode {
 			return fmt.Errorf("技能 '%s' 不支持 Claude Code 适配器", skillID)
 		}
+	case spec.TargetOpenCode:
+		tryOpenCode = true
+		if !skill.Compatibility.OpenCode {
+			return fmt.Errorf("技能 '%s' 不支持 OpenCode 适配器", skillID)
+		}
 	default:
-		return fmt.Errorf("无效的适配器目标: %s，可用选项: %s, %s, auto", adapterTarget, spec.TargetCursor, spec.TargetClaudeCode)
+		return fmt.Errorf("无效的适配器目标: %s，可用选项: %s, %s, %s, auto", adapterTarget, spec.TargetCursor, spec.TargetClaudeCode, spec.TargetOpenCode)
 	}
 
 	// 尝试Cursor适配器
@@ -144,6 +156,15 @@ func runFeedback(skillID string) error {
 		fileContent, extractErr = claudeAdapter.Extract(skillID)
 		if extractErr == nil {
 			adapterName = "Claude"
+		}
+	}
+
+	// 如果前两个适配器失败且需要尝试OpenCode适配器
+	if fileContent == "" && tryOpenCode {
+		opencodeAdapter := opencode.NewOpenCodeAdapter()
+		fileContent, extractErr = opencodeAdapter.Extract(skillID)
+		if extractErr == nil {
+			adapterName = "OpenCode"
 		}
 	}
 

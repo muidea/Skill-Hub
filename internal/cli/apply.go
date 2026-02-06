@@ -7,6 +7,7 @@ import (
 	"skill-hub/internal/adapter"
 	"skill-hub/internal/adapter/claude"
 	"skill-hub/internal/adapter/cursor"
+	"skill-hub/internal/adapter/opencode"
 	"skill-hub/internal/engine"
 	"skill-hub/internal/state"
 	"skill-hub/pkg/spec"
@@ -26,7 +27,7 @@ var applyCmd = &cobra.Command{
 	Long: `将当前项目已启用的技能分发到目标工具配置文件。
 
 使用 --dry-run 参数可以预览变更而不实际修改文件。
-使用 --target 参数指定目标工具 (cursor/claude_code/all)。`,
+使用 --target 参数指定目标工具 (cursor/claude_code/open_code/all)。`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runApply()
 	},
@@ -34,7 +35,7 @@ var applyCmd = &cobra.Command{
 
 func init() {
 	applyCmd.Flags().BoolVar(&dryRun, "dry-run", false, "预览变更而不实际修改文件")
-	applyCmd.Flags().StringVar(&target, "target", "", "目标工具: cursor, claude_code, all (为空时使用状态绑定的目标)")
+	applyCmd.Flags().StringVar(&target, "target", "", "目标工具: cursor, claude_code, open_code, all (为空时使用状态绑定的目标)")
 	applyCmd.Flags().StringVar(&mode, "mode", "project", "配置模式: project (项目级), global (全局)")
 }
 
@@ -71,7 +72,7 @@ func runApply() error {
 			fmt.Println("请先执行以下操作之一:")
 			fmt.Printf("  1. 使用 'skill-hub set-target [%s|%s]' 设置首选目标\n", spec.TargetCursor, spec.TargetClaudeCode)
 			fmt.Printf("  2. 使用 'skill-hub use [skill-id] --target [%s|%s]' 启用技能并指定目标\n", spec.TargetCursor, spec.TargetClaudeCode)
-			fmt.Printf("  3. 使用 'skill-hub apply --target [%s|%s|%s]' 显式指定目标\n", spec.TargetCursor, spec.TargetClaudeCode, spec.TargetAll)
+			fmt.Printf("  3. 使用 'skill-hub apply --target [%s|%s|%s|%s]' 显式指定目标\n", spec.TargetCursor, spec.TargetClaudeCode, spec.TargetOpenCode, spec.TargetAll)
 			return nil
 		}
 
@@ -111,9 +112,11 @@ func runApply() error {
 			}
 
 			if resolvedTarget == spec.TargetCursor && !skill.Compatibility.Cursor {
-				incompatibleSkills = append(incompatibleSkills, fmt.Sprintf("%s (仅支持 Claude Code)", skillID))
+				incompatibleSkills = append(incompatibleSkills, fmt.Sprintf("%s (仅支持 Claude Code/OpenCode)", skillID))
 			} else if resolvedTarget == spec.TargetClaudeCode && !skill.Compatibility.ClaudeCode {
-				incompatibleSkills = append(incompatibleSkills, fmt.Sprintf("%s (仅支持 Cursor)", skillID))
+				incompatibleSkills = append(incompatibleSkills, fmt.Sprintf("%s (仅支持 Cursor/OpenCode)", skillID))
+			} else if resolvedTarget == spec.TargetOpenCode && !skill.Compatibility.OpenCode {
+				incompatibleSkills = append(incompatibleSkills, fmt.Sprintf("%s (仅支持 Cursor/Claude Code)", skillID))
 			}
 		}
 
@@ -150,8 +153,18 @@ func runApply() error {
 		adapters = append(adapters, claudeAdapter)
 	}
 
+	if resolvedTarget == spec.TargetAll || resolvedTarget == spec.TargetOpenCode {
+		opencodeAdapter := opencode.NewOpenCodeAdapter()
+		if mode == "global" {
+			opencodeAdapter = opencodeAdapter.WithGlobalMode()
+		} else {
+			opencodeAdapter = opencodeAdapter.WithProjectMode()
+		}
+		adapters = append(adapters, opencodeAdapter)
+	}
+
 	if len(adapters) == 0 {
-		return fmt.Errorf("无效的目标工具: %s，可用选项: %s, %s, %s", resolvedTarget, spec.TargetCursor, spec.TargetClaudeCode, spec.TargetAll)
+		return fmt.Errorf("无效的目标工具: %s，可用选项: %s, %s, %s, %s", resolvedTarget, spec.TargetCursor, spec.TargetClaudeCode, spec.TargetOpenCode, spec.TargetAll)
 	}
 
 	// 应用每个技能到每个适配器
@@ -228,6 +241,9 @@ func getAdapterName(adpt adapter.Adapter) string {
 	if _, ok := adpt.(*claude.ClaudeAdapter); ok {
 		return "Claude"
 	}
+	if _, ok := adpt.(*opencode.OpenCodeAdapter); ok {
+		return "OpenCode"
+	}
 	return "Unknown"
 }
 
@@ -239,6 +255,9 @@ func adapterSupportsSkill(adpt adapter.Adapter, skill *spec.Skill) bool {
 	}
 	if _, ok := adpt.(*claude.ClaudeAdapter); ok {
 		return skill.Compatibility.ClaudeCode
+	}
+	if _, ok := adpt.(*opencode.OpenCodeAdapter); ok {
+		return skill.Compatibility.OpenCode
 	}
 	return false
 }

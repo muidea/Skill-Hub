@@ -137,8 +137,8 @@ func (m *StateManager) SetPreferredTarget(projectPath, target string) error {
 
 	// 验证目标值
 	normalizedTarget := spec.NormalizeTarget(target)
-	if normalizedTarget != spec.TargetCursor && normalizedTarget != spec.TargetClaudeCode && normalizedTarget != "" {
-		return fmt.Errorf("无效的目标值: %s，可用选项: %s, %s", target, spec.TargetCursor, spec.TargetClaudeCode)
+	if normalizedTarget != spec.TargetCursor && normalizedTarget != spec.TargetClaudeCode && normalizedTarget != spec.TargetOpenCode && normalizedTarget != "" {
+		return fmt.Errorf("无效的目标值: %s，可用选项: %s, %s, %s", target, spec.TargetCursor, spec.TargetClaudeCode, spec.TargetOpenCode)
 	}
 
 	state.PreferredTarget = normalizedTarget

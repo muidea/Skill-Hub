@@ -11,6 +11,7 @@ import (
 	"skill-hub/internal/adapter"
 	"skill-hub/internal/adapter/claude"
 	"skill-hub/internal/adapter/cursor"
+	"skill-hub/internal/adapter/opencode"
 	"skill-hub/internal/engine"
 	"skill-hub/internal/state"
 	"skill-hub/pkg/spec"
@@ -78,6 +79,7 @@ func runStatus() error {
 	}{
 		{"Cursor", cursor.NewCursorAdapter(), ""},
 		{"Claude", claude.NewClaudeAdapter(), ""},
+		{"OpenCode", opencode.NewOpenCodeAdapter(), ""},
 	}
 
 	// 检查文件是否存在并获取路径
@@ -95,6 +97,14 @@ func runStatus() error {
 			claudeAdapter.WithGlobalMode()
 			// 获取配置路径
 			path, err := claudeAdapter.GetConfigPath()
+			if err == nil {
+				adapters[i].filePath = path
+			}
+		} else if opencodeAdapter, ok := adapters[i].adapter.(*opencode.OpenCodeAdapter); ok {
+			// OpenCode适配器需要设置模式
+			opencodeAdapter.WithGlobalMode()
+			// 获取技能目录路径
+			path, err := opencodeAdapter.GetSkillsPath()
 			if err == nil {
 				adapters[i].filePath = path
 			}
