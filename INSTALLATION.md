@@ -200,10 +200,12 @@ Skill Hub 提供了一系列命令来管理技能和项目。
 | `set-target` | 设置项目首选目标 | `skill-hub set-target open_code` |
 | `apply` | 将技能应用到项目 | `skill-hub apply --dry-run` |
 | `status` | 检查技能状态 | `skill-hub status` |
-| `feedback` | 反馈手动修改 | `skill-hub feedback git-expert` |
+| `feedback` | 反馈手动修改 | `skill-hub feedback git-expert --archive` |
 | `update` | 更新技能仓库 | `skill-hub update` |
 | `remove` | 从项目移除技能 | `skill-hub remove git-expert` |
 | `git` | Git仓库操作 | `skill-hub git --help` |
+| `create` | 创建新的技能模板 | `skill-hub create my-skill --description "技能描述"` |
+| `validate-local` | 在本地项目中验证技能 | `skill-hub validate-local my-skill --strict` |
 
 ### 常用工作流程
 
@@ -236,11 +238,29 @@ skill-hub status
 # 反馈手动修改
 skill-hub feedback golang-best-practices
 
+# 反馈并归档验证通过的技能
+skill-hub feedback golang-best-practices --archive
+
 # 更新技能仓库
 skill-hub update
 
 # 移除不再需要的技能
 skill-hub remove golang-best-practices
+```
+
+#### 技能创建和验证
+```bash
+# 从当前项目创建新技能模板
+skill-hub create my-new-skill --description "Go项目代码审查最佳实践"
+
+# 在本地项目中验证技能有效性
+skill-hub validate-local my-new-skill
+
+# 使用严格模式验证（警告视为错误）
+skill-hub validate-local my-new-skill --strict
+
+# 创建技能时指定兼容性
+skill-hub create api-docs-skill --compatibility cursor,opencode --output-dir ./custom-skills
 ```
 
 ## 技能管理
