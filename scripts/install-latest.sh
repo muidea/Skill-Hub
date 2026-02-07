@@ -112,12 +112,40 @@ verify_file() {
     echo "验证文件完整性..."
     
     if command -v sha256sum >/dev/null 2>&1; then
+        # 首先尝试直接验证
         if sha256sum -c "$checksum_file" 2>/dev/null; then
             echo -e "${GREEN}✓ 文件验证成功${NC}"
             return 0
         else
-            echo -e "${RED}✗ 文件验证失败${NC}"
-            return 1
+            # 如果验证失败，可能是文件名不匹配
+            # 创建修复后的校验文件（使用正确的文件名）
+            local expected_hash=$(sha256sum "$file" | cut -d' ' -f1)
+            local checksum_content=$(cat "$checksum_file")
+            
+            # 尝试从校验文件中提取哈希值
+            local extracted_hash=""
+            
+            # 方法1: 如果是纯64字符哈希
+            if [[ "$checksum_content" =~ ^[a-f0-9]{64}$ ]]; then
+                extracted_hash="$checksum_content"
+            # 方法2: 如果是 "哈希值 文件名" 格式
+            elif [[ "$checksum_content" =~ ^([a-f0-9]{64})[[:space:]]+ ]]; then
+                extracted_hash="${BASH_REMATCH[1]}"
+            # 方法3: 如果是 "sha256:哈希值" 格式
+            elif [[ "$checksum_content" =~ ^sha256:([a-f0-9]{64}) ]]; then
+                extracted_hash="${BASH_REMATCH[1]}"
+            fi
+            
+            if [ -n "$extracted_hash" ] && [ "$extracted_hash" = "$expected_hash" ]; then
+                echo -e "${GREEN}✓ 文件验证成功（哈希值匹配）${NC}"
+                return 0
+            else
+                echo -e "${RED}✗ 文件验证失败${NC}"
+                echo "  期望的哈希: $expected_hash"
+                echo "  提取的哈希: $extracted_hash"
+                echo "  校验文件内容: '$checksum_content'"
+                return 1
+            fi
         fi
     elif command -v shasum >/dev/null 2>&1; then
         # macOS
@@ -218,9 +246,18 @@ main() {
         CHECKSUM_DOWNLOADED=false
     fi
     
+    # 解压文件
+    if ! extract_file "$ARCHIVE_NAME"; then
+        echo -e "${RED}解压失败${NC}"
+        cd /
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+    
     # 验证文件（仅当校验文件下载成功时）
+    # 注意：校验文件验证的是解压后的二进制文件，不是压缩包
     if [ "$CHECKSUM_DOWNLOADED" = "true" ]; then
-        if ! verify_file "$ARCHIVE_NAME" "$CHECKSUM_NAME"; then
+        if ! verify_file "$BINARY_NAME" "$CHECKSUM_NAME"; then
             echo -e "${RED}下载失败: 文件验证错误${NC}"
             cd /
             rm -rf "$TEMP_DIR"
@@ -228,14 +265,6 @@ main() {
         fi
     else
         echo -e "${YELLOW}跳过文件验证（校验文件缺失）${NC}"
-    fi
-    
-    # 解压文件
-    if ! extract_file "$ARCHIVE_NAME"; then
-        echo -e "${RED}解压失败${NC}"
-        cd /
-        rm -rf "$TEMP_DIR"
-        exit 1
     fi
     
     # 显示内容
