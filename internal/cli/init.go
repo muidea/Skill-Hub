@@ -82,10 +82,7 @@ git_branch: "main"
 	gitExpertMD := `---
 name: git-expert
 description: 根据变更自动生成符合 Conventional Commits 规范的提交说明
-compatibility:
-  cursor: true
-  claude_code: false
-  open_code: false
+compatibility: Designed for Cursor (or similar AI coding assistants)
 metadata:
   version: 1.0.0
   author: skill-hub
@@ -151,10 +148,7 @@ fix: 修复登录页面样式错位问题
 	claudeMD := `---
 name: claude-code-review
 description: 专业的代码审查助手，帮助发现代码中的问题和改进点
-compatibility:
-  cursor: false
-  claude_code: true
-  open_code: false
+compatibility: Designed for Claude Code (or similar AI coding assistants)
 metadata:
   version: 1.0.0
   author: skill-hub

@@ -128,26 +128,29 @@ func (m *SkillManager) loadSkillFromMarkdown(mdPath, skillID string) (*spec.Skil
 	}
 
 	// 设置兼容性
-	skill.Compatibility = spec.Compatibility{
-		Cursor:     true,
-		ClaudeCode: true,
-		OpenCode:   false,
-		Shell:      false,
-	}
-
-	// 从YAML读取兼容性设置
-	if compatData, ok := skillData["compatibility"].(map[string]interface{}); ok {
-		if cursorVal, ok := compatData["cursor"].(bool); ok {
-			skill.Compatibility.Cursor = cursorVal
-		}
-		if claudeVal, ok := compatData["claude_code"].(bool); ok {
-			skill.Compatibility.ClaudeCode = claudeVal
-		}
-		if openCodeVal, ok := compatData["open_code"].(bool); ok {
-			skill.Compatibility.OpenCode = openCodeVal
-		}
-		if shellVal, ok := compatData["shell"].(bool); ok {
-			skill.Compatibility.Shell = shellVal
+	// 从YAML读取兼容性设置（字符串格式）
+	if compatData, ok := skillData["compatibility"]; ok {
+		switch v := compatData.(type) {
+		case string:
+			skill.Compatibility = v
+		case map[string]interface{}:
+			// 向后兼容：将对象格式转换为字符串
+			var compatList []string
+			if cursorVal, ok := v["cursor"].(bool); ok && cursorVal {
+				compatList = append(compatList, "Cursor")
+			}
+			if claudeVal, ok := v["claude_code"].(bool); ok && claudeVal {
+				compatList = append(compatList, "Claude Code")
+			}
+			if openCodeVal, ok := v["open_code"].(bool); ok && openCodeVal {
+				compatList = append(compatList, "OpenCode")
+			}
+			if shellVal, ok := v["shell"].(bool); ok && shellVal {
+				compatList = append(compatList, "Shell")
+			}
+			if len(compatList) > 0 {
+				skill.Compatibility = "Designed for " + strings.Join(compatList, ", ") + " (or similar AI coding assistants)"
+			}
 		}
 	}
 

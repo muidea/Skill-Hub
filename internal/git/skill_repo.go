@@ -324,10 +324,7 @@ func (sr *SkillRepository) loadSkillFromMarkdown(mdPath, skillID string) (*spec.
 	}
 
 	// 设置兼容性（默认为所有工具）
-	skill.Compatibility = spec.Compatibility{
-		Cursor:     true,
-		ClaudeCode: true,
-	}
+	skill.Compatibility = "Designed for Cursor and Claude Code (or similar AI coding assistants)"
 
 	return skill, nil
 }
@@ -392,11 +389,7 @@ func (sr *SkillRepository) CreateSkill(skill *spec.Skill, promptContent string) 
 	frontmatter := fmt.Sprintf(`---
 name: %s
 description: %s
-compatibility:
-  opencode: %v
-  cursor: %v
-  claude_code: %v
-metadata:
+%smetadata:
   version: %s
   author: %s
   tags: %s
@@ -404,9 +397,12 @@ metadata:
 `,
 		skill.Name,
 		skill.Description,
-		skill.Compatibility.OpenCode,
-		skill.Compatibility.Cursor,
-		skill.Compatibility.ClaudeCode,
+		func() string {
+			if skill.Compatibility != "" {
+				return fmt.Sprintf("compatibility: %s\n", skill.Compatibility)
+			}
+			return ""
+		}(),
 		skill.Version,
 		skill.Author,
 		strings.Join(skill.Tags, ","))

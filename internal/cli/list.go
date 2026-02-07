@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"skill-hub/internal/engine"
@@ -39,16 +40,17 @@ func runList() error {
 
 	for _, skill := range skills {
 		tools := []string{}
-		if skill.Compatibility.Cursor {
+		compatLower := strings.ToLower(skill.Compatibility)
+		if strings.Contains(compatLower, "cursor") {
 			tools = append(tools, "cursor")
 		}
-		if skill.Compatibility.ClaudeCode {
+		if strings.Contains(compatLower, "claude code") || strings.Contains(compatLower, "claude_code") {
 			tools = append(tools, "claude")
 		}
-		if skill.Compatibility.Shell {
+		if strings.Contains(compatLower, "shell") {
 			tools = append(tools, "shell")
 		}
-		if skill.Compatibility.OpenCode {
+		if strings.Contains(compatLower, "opencode") {
 			tools = append(tools, "opencode")
 		}
 

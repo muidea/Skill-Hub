@@ -41,10 +41,7 @@ func TestSkillManager(t *testing.T) {
 		mdContent := `---
 name: test-skill
 description: A test skill for unit testing
-compatibility:
-  open_code: true
-  cursor: true
-  claude_code: true
+compatibility: Designed for OpenCode, Claude Code, and Cursor (or similar AI coding assistants)
 metadata:
   version: 1.0.0
   author: Test Author
@@ -82,16 +79,8 @@ This is a test skill for unit testing.`
 			t.Errorf("Skill.Description = %v, want %v", skill.Description, "A test skill for unit testing")
 		}
 
-		if !skill.Compatibility.OpenCode {
-			t.Error("Skill.Compatibility.OpenCode = false, want true")
-		}
-
-		if !skill.Compatibility.Cursor {
-			t.Error("Skill.Compatibility.Cursor = false, want true")
-		}
-
-		if !skill.Compatibility.ClaudeCode {
-			t.Error("Skill.Compatibility.ClaudeCode = false, want true")
+		if skill.Compatibility != "Designed for OpenCode, Claude Code, and Cursor (or similar AI coding assistants)" {
+			t.Errorf("Skill.Compatibility = %v, want %v", skill.Compatibility, "Designed for OpenCode, Claude Code, and Cursor (or similar AI coding assistants)")
 		}
 	})
 
@@ -140,8 +129,7 @@ This is a test skill for unit testing.`
 		mdContent := `---
 name: prompt-skill
 description: A skill for prompt testing
-compatibility:
-  open_code: true
+compatibility: Designed for OpenCode (or similar AI coding assistants)
 ---
 
 # Prompt Skill Content

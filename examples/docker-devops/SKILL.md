@@ -1,9 +1,6 @@
 ---
-compatibility:
-    claude_code: true
-    cursor: true
-    open_code: true
-description: Docker容器化和DevOps最佳实践
+compatibility: Designed for Claude Code, Cursor, and OpenCode (or similar AI coding assistants)
+description: Provides Docker containerization and DevOps best practices. Use when working with Docker, container orchestration, CI/CD pipelines, or when the user asks about containerization, DevOps workflows, or infrastructure as code.
 metadata:
     author: Skill Hub Team
     tags: docker,devops,containerization,ci-cd,kubernetes

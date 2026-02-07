@@ -316,15 +316,22 @@ func runStatus() error {
 
 // checkAdapterSupport 检查适配器是否支持该技能
 func checkAdapterSupport(adpt adapter.Adapter, skill *spec.Skill) bool {
-	// 使用类型断言
+	// 如果没有指定兼容性，假设兼容所有
+	if skill.Compatibility == "" {
+		return true
+	}
+
+	compatLower := strings.ToLower(skill.Compatibility)
+
+	// 使用类型断言检查适配器类型
 	if _, ok := adpt.(*cursor.CursorAdapter); ok {
-		return skill.Compatibility.Cursor
+		return strings.Contains(compatLower, "cursor")
 	}
 	if _, ok := adpt.(*claude.ClaudeAdapter); ok {
-		return skill.Compatibility.ClaudeCode
+		return strings.Contains(compatLower, "claude code") || strings.Contains(compatLower, "claude_code")
 	}
 	if _, ok := adpt.(*opencode.OpenCodeAdapter); ok {
-		return skill.Compatibility.OpenCode
+		return strings.Contains(compatLower, "opencode")
 	}
 	return false
 }

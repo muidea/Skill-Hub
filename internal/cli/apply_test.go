@@ -46,43 +46,50 @@ func TestGetAdapterName(t *testing.T) {
 }
 
 func TestAdapterSupportsSkill(t *testing.T) {
-	skill := &spec.Skill{
-		Compatibility: spec.Compatibility{
-			Cursor:     true,
-			ClaudeCode: false,
-			OpenCode:   true,
-		},
-	}
-
 	tests := []struct {
-		name     string
-		adapter  adapter.Adapter
-		skill    *spec.Skill
-		expected bool
+		name          string
+		adapter       adapter.Adapter
+		compatibility string
+		expected      bool
 	}{
 		{
-			name:     "Cursor adapter with cursor support",
-			adapter:  cursor.NewCursorAdapter(),
-			skill:    skill,
-			expected: true,
+			name:          "Cursor adapter with cursor support",
+			adapter:       cursor.NewCursorAdapter(),
+			compatibility: "Designed for Cursor and OpenCode (or similar AI coding assistants)",
+			expected:      true,
 		},
 		{
-			name:     "Claude adapter without claude support",
-			adapter:  claude.NewClaudeAdapter(),
-			skill:    skill,
-			expected: false,
+			name:          "Claude adapter without claude support",
+			adapter:       claude.NewClaudeAdapter(),
+			compatibility: "Designed for Cursor and OpenCode (or similar AI coding assistants)",
+			expected:      false,
 		},
 		{
-			name:     "OpenCode adapter with opencode support",
-			adapter:  opencode.NewOpenCodeAdapter(),
-			skill:    skill,
-			expected: true,
+			name:          "OpenCode adapter with opencode support",
+			adapter:       opencode.NewOpenCodeAdapter(),
+			compatibility: "Designed for Cursor and OpenCode (or similar AI coding assistants)",
+			expected:      true,
+		},
+		{
+			name:          "Claude adapter with claude support",
+			adapter:       claude.NewClaudeAdapter(),
+			compatibility: "Designed for Claude Code (or similar AI coding assistants)",
+			expected:      true,
+		},
+		{
+			name:          "Empty compatibility supports all",
+			adapter:       cursor.NewCursorAdapter(),
+			compatibility: "",
+			expected:      true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := adapterSupportsSkill(tt.adapter, tt.skill)
+			skill := &spec.Skill{
+				Compatibility: tt.compatibility,
+			}
+			result := adapterSupportsSkill(tt.adapter, skill)
 			if result != tt.expected {
 				t.Errorf("adapterSupportsSkill() = %v, want %v", result, tt.expected)
 			}

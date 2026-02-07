@@ -1,9 +1,6 @@
 ---
-compatibility:
-    claude_code: true
-    cursor: true
-    open_code: true
-description: React + TypeScript开发最佳实践
+compatibility: Designed for Claude Code, Cursor, and OpenCode (or similar AI coding assistants)
+description: Provides React + TypeScript development best practices. Use when building React applications with TypeScript, reviewing frontend code, or when the user asks about React patterns, TypeScript types, or modern frontend development.
 metadata:
     author: Skill Hub Team
     tags: react,typescript,frontend,web-development

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"skill-hub/internal/adapter"
 	"skill-hub/internal/adapter/claude"
@@ -111,12 +112,27 @@ func runApply() error {
 				continue
 			}
 
-			if resolvedTarget == spec.TargetCursor && !skill.Compatibility.Cursor {
-				incompatibleSkills = append(incompatibleSkills, fmt.Sprintf("%s (仅支持 Claude Code/OpenCode)", skillID))
-			} else if resolvedTarget == spec.TargetClaudeCode && !skill.Compatibility.ClaudeCode {
-				incompatibleSkills = append(incompatibleSkills, fmt.Sprintf("%s (仅支持 Cursor/OpenCode)", skillID))
-			} else if resolvedTarget == spec.TargetOpenCode && !skill.Compatibility.OpenCode {
-				incompatibleSkills = append(incompatibleSkills, fmt.Sprintf("%s (仅支持 Cursor/Claude Code)", skillID))
+			// 检查技能是否兼容当前目标
+			isCompatible := false
+			if skill.Compatibility != "" {
+				compatLower := strings.ToLower(skill.Compatibility)
+				targetLower := strings.ToLower(resolvedTarget)
+
+				// 检查兼容性字符串中是否包含目标名称
+				if strings.Contains(compatLower, targetLower) {
+					isCompatible = true
+				} else if resolvedTarget == spec.TargetOpenCode && strings.Contains(compatLower, "opencode") {
+					isCompatible = true
+				} else if resolvedTarget == spec.TargetClaudeCode && (strings.Contains(compatLower, "claude code") || strings.Contains(compatLower, "claude_code")) {
+					isCompatible = true
+				}
+			} else {
+				// 如果没有指定兼容性，假设兼容所有
+				isCompatible = true
+			}
+
+			if !isCompatible {
+				incompatibleSkills = append(incompatibleSkills, fmt.Sprintf("%s (不兼容 %s)", skillID, resolvedTarget))
 			}
 		}
 
@@ -281,15 +297,22 @@ func getAdapterName(adpt adapter.Adapter) string {
 
 // adapterSupportsSkill 检查适配器是否支持该技能
 func adapterSupportsSkill(adpt adapter.Adapter, skill *spec.Skill) bool {
-	// 使用类型断言
+	// 如果没有指定兼容性，假设兼容所有
+	if skill.Compatibility == "" {
+		return true
+	}
+
+	compatLower := strings.ToLower(skill.Compatibility)
+
+	// 使用类型断言检查适配器类型
 	if _, ok := adpt.(*cursor.CursorAdapter); ok {
-		return skill.Compatibility.Cursor
+		return strings.Contains(compatLower, "cursor")
 	}
 	if _, ok := adpt.(*claude.ClaudeAdapter); ok {
-		return skill.Compatibility.ClaudeCode
+		return strings.Contains(compatLower, "claude code") || strings.Contains(compatLower, "claude_code")
 	}
 	if _, ok := adpt.(*opencode.OpenCodeAdapter); ok {
-		return skill.Compatibility.OpenCode
+		return strings.Contains(compatLower, "opencode")
 	}
 	return false
 }

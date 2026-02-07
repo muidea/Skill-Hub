@@ -105,13 +105,11 @@ func convertToOpenCodeFormat(content string, skillID string) (string, error) {
 		openCodeData["license"] = license
 	}
 
-	if compatibility, ok := originalData["compatibility"].(map[string]interface{}); ok {
-		// 如果原始兼容性包含open_code，则添加
-		if openCode, ok := compatibility["open_code"].(bool); ok && openCode {
-			openCodeData["compatibility"] = "opencode"
+	if compatStr, ok := originalData["compatibility"].(string); ok {
+		// 检查字符串中是否包含OpenCode
+		if strings.Contains(strings.ToLower(compatStr), "opencode") {
+			openCodeData["compatibility"] = compatStr
 		}
-	} else if compatStr, ok := originalData["compatibility"].(string); ok {
-		openCodeData["compatibility"] = compatStr
 	}
 
 	// 添加metadata字段

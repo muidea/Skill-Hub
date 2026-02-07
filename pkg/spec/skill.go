@@ -8,7 +8,7 @@ type Skill struct {
 	Author        string        `yaml:"author" json:"author"`
 	Description   string        `yaml:"description" json:"description"`
 	Tags          []string      `yaml:"tags" json:"tags"`
-	Compatibility Compatibility `yaml:"compatibility" json:"compatibility"`
+	Compatibility string        `yaml:"compatibility,omitempty" json:"compatibility,omitempty"`
 	Variables     []Variable    `yaml:"variables" json:"variables"`
 	Dependencies  []string      `yaml:"dependencies" json:"dependencies"`
 	Claude        *ClaudeConfig `yaml:"claude,omitempty" json:"claude,omitempty"`
@@ -29,14 +29,6 @@ type ToolSpec struct {
 	InputSchema map[string]interface{} `yaml:"input_schema" json:"input_schema"`
 }
 
-// Compatibility 表示技能支持的AI工具
-type Compatibility struct {
-	Cursor     bool `yaml:"cursor" json:"cursor"`
-	ClaudeCode bool `yaml:"claude_code" json:"claude_code"`
-	OpenCode   bool `yaml:"open_code" json:"open_code"` // OpenCode支持
-	Shell      bool `yaml:"shell" json:"shell"`
-}
-
 // Variable 表示技能模板中的变量
 type Variable struct {
 	Name        string `yaml:"name" json:"name"`
@@ -46,13 +38,13 @@ type Variable struct {
 
 // SkillMetadata 用于技能索引的简化信息
 type SkillMetadata struct {
-	ID            string        `json:"id"`
-	Name          string        `json:"name"`
-	Version       string        `json:"version"`
-	Author        string        `json:"author"`
-	Description   string        `json:"description"`
-	Tags          []string      `json:"tags"`
-	Compatibility Compatibility `json:"compatibility"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Version       string   `json:"version"`
+	Author        string   `json:"author"`
+	Description   string   `json:"description"`
+	Tags          []string `json:"tags"`
+	Compatibility string   `json:"compatibility,omitempty"`
 }
 
 // Registry 表示技能仓库的索引

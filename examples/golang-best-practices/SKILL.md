@@ -1,9 +1,6 @@
 ---
-compatibility:
-    claude_code: true
-    cursor: true
-    open_code: true
-description: Go语言最佳实践和代码规范指导
+compatibility: Designed for Claude Code, Cursor, and OpenCode (or similar AI coding assistants)
+description: Provides Go language best practices and coding standards guidance. Use when writing Go code, reviewing Go projects, or when the user asks about Go conventions, patterns, or style guides.
 metadata:
     author: Skill Hub Team
     tags: golang,best-practices,code-review,coding-standards

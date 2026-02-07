@@ -100,40 +100,43 @@ func runFeedback(skillID string) error {
 		if projectState != nil && projectState.PreferredTarget != "" {
 			// 使用项目的首选目标
 			normalizedTarget := spec.NormalizeTarget(projectState.PreferredTarget)
-			if normalizedTarget == spec.TargetCursor && skill.Compatibility.Cursor {
+			compatLower := strings.ToLower(skill.Compatibility)
+
+			if normalizedTarget == spec.TargetCursor && strings.Contains(compatLower, "cursor") {
 				tryCursor = true
 				fmt.Printf("🔍 使用项目首选目标: Cursor\n")
-			} else if normalizedTarget == spec.TargetClaudeCode && skill.Compatibility.ClaudeCode {
+			} else if normalizedTarget == spec.TargetClaudeCode && (strings.Contains(compatLower, "claude code") || strings.Contains(compatLower, "claude_code")) {
 				tryClaude = true
 				fmt.Printf("🔍 使用项目首选目标: Claude Code\n")
-			} else if normalizedTarget == spec.TargetOpenCode && skill.Compatibility.OpenCode {
+			} else if normalizedTarget == spec.TargetOpenCode && strings.Contains(compatLower, "opencode") {
 				tryOpenCode = true
 				fmt.Printf("🔍 使用项目首选目标: OpenCode\n")
 			} else {
 				// 首选目标不支持，回退到技能兼容性
-				tryCursor = skill.Compatibility.Cursor
-				tryClaude = skill.Compatibility.ClaudeCode
-				tryOpenCode = skill.Compatibility.OpenCode
+				tryCursor = strings.Contains(compatLower, "cursor")
+				tryClaude = strings.Contains(compatLower, "claude code") || strings.Contains(compatLower, "claude_code")
+				tryOpenCode = strings.Contains(compatLower, "opencode")
 			}
 		} else {
 			// 没有首选目标，根据技能兼容性尝试
-			tryCursor = skill.Compatibility.Cursor
-			tryClaude = skill.Compatibility.ClaudeCode
-			tryOpenCode = skill.Compatibility.OpenCode
+			compatLower := strings.ToLower(skill.Compatibility)
+			tryCursor = strings.Contains(compatLower, "cursor")
+			tryClaude = strings.Contains(compatLower, "claude code") || strings.Contains(compatLower, "claude_code")
+			tryOpenCode = strings.Contains(compatLower, "opencode")
 		}
 	case spec.TargetCursor:
 		tryCursor = true
-		if !skill.Compatibility.Cursor {
+		if !strings.Contains(strings.ToLower(skill.Compatibility), "cursor") {
 			return fmt.Errorf("技能 '%s' 不支持 Cursor 适配器", skillID)
 		}
 	case spec.TargetClaudeCode:
 		tryClaude = true
-		if !skill.Compatibility.ClaudeCode {
+		if !(strings.Contains(strings.ToLower(skill.Compatibility), "claude code") || strings.Contains(strings.ToLower(skill.Compatibility), "claude_code")) {
 			return fmt.Errorf("技能 '%s' 不支持 Claude Code 适配器", skillID)
 		}
 	case spec.TargetOpenCode:
 		tryOpenCode = true
-		if !skill.Compatibility.OpenCode {
+		if !strings.Contains(strings.ToLower(skill.Compatibility), "opencode") {
 			return fmt.Errorf("技能 '%s' 不支持 OpenCode 适配器", skillID)
 		}
 	default:
