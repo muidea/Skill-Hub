@@ -26,6 +26,7 @@ skill-hub
 validate
 
 !cmd/skill-hub
+!cmd/validate
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
