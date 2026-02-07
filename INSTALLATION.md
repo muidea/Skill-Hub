@@ -252,42 +252,49 @@ Skill Hub 使用标准的目录结构来组织技能：
 ```
 /skills
   /git-expert                    # 技能目录（技能ID）
-    ├── skill.yaml              # 技能元数据（必需）
-    ├── prompt.md               # 核心指令（必需，支持Go Template语法）
+    ├── SKILL.md                # 技能元数据和内容（必需，Markdown + YAML frontmatter）
     ├── README.md               # 技能说明文档（可选）
     └── scripts/                # 伴随执行的脚本（可选）
         ├── setup.sh           # 安装脚本
         └── cleanup.sh         # 清理脚本
 ```
 
-### skill.yaml 格式
+### SKILL.md 格式
 
-每个技能必须包含一个 `skill.yaml` 文件，定义技能的元数据和配置。
+每个技能必须包含一个 `SKILL.md` 文件，使用Markdown格式并包含YAML frontmatter定义技能的元数据和配置。
 
-```yaml
-# 技能基本信息
-name: "git-expert"              # 技能名称
-version: "1.0.0"                # 版本号
-description: "Git 提交专家"      # 技能描述
-author: "dev-team"              # 作者/团队
-tags: ["git", "workflow"]       # 标签，用于分类和搜索
+```markdown
+---
+name: git-expert              # 技能名称（必需）
+description: Git 提交专家      # 技能描述（必需）
+compatibility:                # 目标工具兼容性
+  cursor: true                # 支持 Cursor
+  claude_code: true           # 支持 Claude Code
+  open_code: true             # 支持 OpenCode
+metadata:                     # 元数据（可选）
+  version: 1.0.0              # 版本号
+  author: dev-team            # 作者/团队
+  tags: git,workflow          # 标签，用于分类和搜索
+---
 
-# 目标工具兼容性
-preferred_target: cursor        # 首选目标工具
-targets:                        # 支持的AI工具
-  cursor: true                  # 支持 Cursor
-  claude_code: true             # 支持 Claude Code
-  open_code: true               # 支持 OpenCode
+# Git 提交专家
 
-# 技能变量（支持Go Template语法）
-variables:
-  project_name: "{{ .ProjectName }}"  # 项目名称变量
-  language: "{{ .Language }}"         # 编程语言变量
+根据代码变更自动生成符合 Conventional Commits 规范的提交说明。
 
-# 技能内容（旧格式，新格式使用单独的prompt.md文件）
-content: |
-  # 技能内容...
-  # 支持Go Template语法: {{.project_name}}, {{.language}}
+## 使用说明
+1. 分析代码变更
+2. 识别变更类型（feat, fix, docs, style, refactor, test, chore）
+3. 生成简洁明了的提交说明
+
+## 变量
+- LANGUAGE: {{.LANGUAGE}} - 输出语言
+
+## 示例
+当检测到新功能时，生成：
+feat: 添加用户登录功能
+
+当修复bug时，生成：
+fix: 修复登录页面样式错位问题
 ```
 
 ### 变量系统
@@ -300,12 +307,20 @@ Skill Hub 支持变量替换，使技能更加灵活：
 - `{{ .ProjectPath }}`: 项目路径
 
 #### 自定义变量
-在 `skill.yaml` 中定义，在 `prompt.md` 中使用：
+在项目配置中定义，在 `SKILL.md` 中使用：
 
 ```yaml
-variables:
-  api_key: "{{ .ApiKey }}"
-  debug_mode: "{{ .DebugMode }}"
+# 在项目配置中定义变量
+vars:
+  api_key: "your-api-key-here"
+  debug_mode: "false"
+```
+
+在SKILL.md中使用变量：
+```markdown
+## API配置
+- API密钥: {{.api_key}}
+- 调试模式: {{.debug_mode}}
 ```
 
 #### 变量使用示例
