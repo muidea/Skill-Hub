@@ -23,6 +23,7 @@ bin
 docs
 dist
 skill-hub
+validate
 
 !cmd/skill-hub
 

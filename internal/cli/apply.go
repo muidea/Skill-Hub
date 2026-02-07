@@ -11,15 +11,21 @@ import (
 	"skill-hub/internal/adapter/opencode"
 	"skill-hub/internal/engine"
 	"skill-hub/internal/state"
+	"skill-hub/pkg/converter"
 	"skill-hub/pkg/spec"
+	"skill-hub/pkg/validator"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	dryRun bool
-	target string
-	mode   string
+	dryRun         bool
+	target         string
+	mode           string
+	autoFix        bool
+	skipValidation bool
+	strictMode     bool
+	interactive    bool
 )
 
 var applyCmd = &cobra.Command{
@@ -28,7 +34,13 @@ var applyCmd = &cobra.Command{
 	Long: `将当前项目已启用的技能分发到目标工具配置文件。
 
 使用 --dry-run 参数可以预览变更而不实际修改文件。
-使用 --target 参数指定目标工具 (cursor/claude_code/open_code/all)。`,
+使用 --target 参数指定目标工具 (cursor/claude_code/open_code/all)。
+
+技能标准校验选项:
+  --auto-fix        自动修复不符合标准的技能
+  --skip-validation 跳过技能标准校验
+  --strict          严格模式：发现不合规技能立即失败
+  --interactive     交互式模式：询问用户确认修复`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runApply()
 	},
@@ -38,6 +50,10 @@ func init() {
 	applyCmd.Flags().BoolVar(&dryRun, "dry-run", false, "预览变更而不实际修改文件")
 	applyCmd.Flags().StringVar(&target, "target", "", "目标工具: cursor, claude_code, open_code, all (为空时使用状态绑定的目标)")
 	applyCmd.Flags().StringVar(&mode, "mode", "project", "配置模式: project (项目级), global (全局)")
+	applyCmd.Flags().BoolVar(&autoFix, "auto-fix", false, "自动修复不符合标准的技能")
+	applyCmd.Flags().BoolVar(&skipValidation, "skip-validation", false, "跳过技能标准校验")
+	applyCmd.Flags().BoolVar(&strictMode, "strict", false, "严格模式：发现不合规技能立即失败")
+	applyCmd.Flags().BoolVar(&interactive, "interactive", false, "交互式模式：询问用户确认修复")
 }
 
 func runApply() error {
@@ -194,6 +210,41 @@ func runApply() error {
 		for skillID, skillVars := range skills {
 			fmt.Printf("\n处理技能: %s\n", skillID)
 
+			// 获取技能文件路径
+			skillPath, err := getSkillFilePath(skillManager, skillID)
+			if err != nil {
+				fmt.Printf("⚠️  跳过技能 %s: %v\n", skillID, err)
+				continue
+			}
+
+			// 验证并修复技能
+			if !skipValidation {
+				valid, issues, err := validateAndFixSkill(skillPath, skillID, autoFix, skipValidation, strictMode, interactive)
+				if err != nil {
+					fmt.Printf("⚠️  技能验证失败 %s: %v\n", skillID, err)
+					if strictMode {
+						return fmt.Errorf("严格模式下验证失败: %s", skillID)
+					}
+					continue
+				}
+
+				if !valid {
+					fmt.Printf("❌ 技能不符合标准: %s\n", skillID)
+					for _, issue := range issues {
+						fmt.Printf("  %s\n", issue)
+					}
+
+					if strictMode {
+						return fmt.Errorf("严格模式下发现不合规技能: %s", skillID)
+					}
+
+					if !autoFix {
+						fmt.Println("  使用 --auto-fix 自动修复或 --skip-validation 跳过验证")
+						continue
+					}
+				}
+			}
+
 			// 加载技能详情
 			skill, err := skillManager.LoadSkill(skillID)
 			if err != nil {
@@ -253,6 +304,115 @@ func runApply() error {
 	return nil
 }
 
+// validateAndFixSkill 验证并修复技能文件
+func validateAndFixSkill(skillPath string, skillID string, autoFix, skipValidation, strictMode, interactive bool) (bool, []string, error) {
+	if skipValidation {
+		return true, nil, nil
+	}
+
+	// Create validator
+	v := validator.NewValidator()
+	options := validator.ValidationOptions{
+		IgnoreWarnings: false,
+		StrictMode:     strictMode,
+	}
+
+	// Validate the skill
+	result, err := v.ValidateWithOptions(skillPath, options)
+	if err != nil {
+		return false, nil, fmt.Errorf("验证技能失败: %w", err)
+	}
+
+	// Check if skill is valid
+	if result.IsValid && (!result.HasWarnings() || !strictMode) {
+		return true, nil, nil
+	}
+
+	// Collect issues
+	var issues []string
+	if result.HasErrors() {
+		for _, err := range result.Errors {
+			issues = append(issues, fmt.Sprintf("❌ [%s] %s", err.Code, err.Message))
+		}
+	}
+	if result.HasWarnings() {
+		for _, warn := range result.Warnings {
+			issues = append(issues, fmt.Sprintf("⚠️  [%s] %s", warn.Code, warn.Message))
+		}
+	}
+
+	// If not auto-fixing, return issues
+	if !autoFix {
+		return false, issues, nil
+	}
+
+	// Auto-fix the skill
+	fmt.Printf("\n🔧 正在自动修复技能: %s\n", skillID)
+
+	// Create converter
+	converter, err := converter.NewConverter()
+	if err != nil {
+		return false, issues, fmt.Errorf("创建转换器失败: %w", err)
+	}
+
+	// Preview conversion first
+	preview, err := converter.PreviewConversion(skillPath, options)
+	if err != nil {
+		return false, issues, fmt.Errorf("预览修复失败: %w", err)
+	}
+
+	if len(preview.AppliedFixes) == 0 {
+		fmt.Println("ℹ️  无需修复")
+		return true, nil, nil
+	}
+
+	// Show what will be fixed
+	fmt.Println("将应用以下修复:")
+	for _, fix := range preview.AppliedFixes {
+		fmt.Printf("  - %s\n", fix)
+	}
+
+	// If interactive mode, ask for confirmation
+	if interactive {
+		fmt.Print("\n是否应用这些修复? (y/N): ")
+		var response string
+		fmt.Scanln(&response)
+		if strings.ToLower(response) != "y" {
+			fmt.Println("跳过修复")
+			return false, issues, nil
+		}
+	}
+
+	// Apply the fixes
+	conversionResult, err := converter.ConvertSkill(skillPath, options)
+	if err != nil {
+		return false, issues, fmt.Errorf("应用修复失败: %w", err)
+	}
+
+	// Show results
+	fmt.Printf("✅ 成功应用 %d 个修复\n", len(conversionResult.AppliedFixes))
+	if len(conversionResult.Errors) > 0 {
+		fmt.Println("修复后仍存在的错误:")
+		for _, err := range conversionResult.Errors {
+			fmt.Printf("  - %s\n", err)
+		}
+	}
+	if len(conversionResult.Warnings) > 0 {
+		fmt.Println("修复后仍存在的警告:")
+		for _, warn := range conversionResult.Warnings {
+			fmt.Printf("  - %s\n", warn)
+		}
+	}
+
+	// Validate again after fixing
+	result, err = v.ValidateWithOptions(skillPath, options)
+	if err != nil {
+		return false, issues, fmt.Errorf("重新验证失败: %w", err)
+	}
+
+	return result.IsValid && (!result.HasWarnings() || !strictMode), nil, nil
+}
+
 // attemptRecovery 尝试恢复失败的技能应用
 func attemptRecovery(adpt adapter.Adapter, skillID string) error {
 	// 尝试从适配器移除残留内容
@@ -279,6 +439,31 @@ func attemptRecovery(adpt adapter.Adapter, skillID string) error {
 	}
 
 	return nil
+}
+
+// getSkillFilePath 获取技能文件路径
+func getSkillFilePath(skillManager *engine.SkillManager, skillID string) (string, error) {
+	// Try to get skills directory
+	skillsDir, err := engine.GetSkillsDir()
+	if err != nil {
+		return "", fmt.Errorf("获取技能目录失败: %w", err)
+	}
+
+	// Try direct path first
+	skillDir := fmt.Sprintf("%s/%s", skillsDir, skillID)
+	skillPath := fmt.Sprintf("%s/SKILL.md", skillDir)
+	if _, err := os.Stat(skillPath); err == nil {
+		return skillPath, nil
+	}
+
+	// Try skills/skills/ subdirectory
+	skillDir = fmt.Sprintf("%s/skills/%s", skillsDir, skillID)
+	skillPath = fmt.Sprintf("%s/SKILL.md", skillDir)
+	if _, err := os.Stat(skillPath); err == nil {
+		return skillPath, nil
+	}
+
+	return "", fmt.Errorf("找不到技能文件: %s", skillID)
 }
 
 // getAdapterName 获取适配器名称
