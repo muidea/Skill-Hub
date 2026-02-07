@@ -32,87 +32,62 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "TAG_NAME=v$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Build for Linux
+      - name: Build release binaries using Makefile
         run: |
-          # 构建Linux版本
-          GOOS=linux GOARCH=amd64 go build -ldflags="-X 'main.version=${{ steps.get_version.outputs.VERSION }}' -X 'main.commit=${{ github.sha }}' -X 'main.date=$(date -u)'" -o skill-hub-linux-amd64 ./cmd/skill-hub
-          GOOS=linux GOARCH=arm64 go build -ldflags="-X 'main.version=${{ steps.get_version.outputs.VERSION }}' -X 'main.commit=${{ github.sha }}' -X 'main.date=$(date -u)'" -o skill-hub-linux-arm64 ./cmd/skill-hub
+          # 使用Makefile构建所有平台的发布版本
+          make release-all VERSION=${{ steps.get_version.outputs.VERSION }} COMMIT=${{ github.sha }}
 
-      - name: Build for macOS
+      - name: Create release archives from dist directory
         run: |
-          # 构建macOS版本
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-X 'main.version=${{ steps.get_version.outputs.VERSION }}' -X 'main.commit=${{ github.sha }}' -X 'main.date=$(date -u)'" -o skill-hub-darwin-amd64 ./cmd/skill-hub
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-X 'main.version=${{ steps.get_version.outputs.VERSION }}' -X 'main.commit=${{ github.sha }}' -X 'main.date=$(date -u)'" -o skill-hub-darwin-arm64 ./cmd/skill-hub
-
-      - name: Build for Windows
-        run: |
-          # 构建Windows版本
-          GOOS=windows GOARCH=amd64 go build -ldflags="-X 'main.version=${{ steps.get_version.outputs.VERSION }}' -X 'main.commit=${{ github.sha }}' -X 'main.date=$(date -u)'" -o skill-hub-windows-amd64.exe ./cmd/skill-hub
-          GOOS=windows GOARCH=arm64 go build -ldflags="-X 'main.version=${{ steps.get_version.outputs.VERSION }}' -X 'main.commit=${{ github.sha }}' -X 'main.date=$(date -u)'" -o skill-hub-windows-arm64.exe ./cmd/skill-hub
-
-      - name: Create checksums
-        run: |
-          # 为所有二进制文件创建SHA256校验和
-          for file in skill-hub-*; do
-            sha256sum "$file" > "$file.sha256"
+          # Makefile的release-all已经在dist目录中创建了二进制文件和校验文件
+          # 现在为每个平台创建压缩包（包含二进制文件、校验文件、README和LICENSE）
+          cd dist
+          
+          # 为每个二进制文件创建压缩包
+          for binary_file in skill-hub-*; do
+            # 跳过已存在的.tar.gz和.sha256文件
+            if [[ "$binary_file" == *.tar.gz ]] || [[ "$binary_file" == *.sha256 ]] || [[ "$binary_file" == checksums.txt ]]; then
+              continue
+            fi
+            
+            # 提取平台信息
+            if [[ "$binary_file" == *.exe ]]; then
+              # Windows文件
+              platform_name="${binary_file%.exe}"
+              binary_name_in_pkg="skill-hub.exe"
+            else
+              # Linux/macOS文件
+              platform_name="$binary_file"
+              binary_name_in_pkg="skill-hub"
+            fi
+            
+            echo "创建压缩包: $platform_name.tar.gz"
+            
+            # 创建临时目录
+            mkdir -p "${platform_name}-pkg"
+            
+            # 复制文件
+            cp "$binary_file" "${platform_name}-pkg/$binary_name_in_pkg"
+            
+            # 复制校验文件（如果存在）
+            if [ -f "${binary_file}.sha256" ]; then
+              cp "${binary_file}.sha256" "${platform_name}-pkg/"
+            fi
+            
+            # 复制文档文件
+            cp ../README.md "${platform_name}-pkg/"
+            cp ../LICENSE "${platform_name}-pkg/"
+            
+            # 创建压缩包
+            tar -czf "${platform_name}.tar.gz" -C "${platform_name}-pkg" .
+            
+            # 清理临时目录
+            rm -rf "${platform_name}-pkg"
           done
           
-          # 为Windows文件创建正确的校验和文件名
-          mv skill-hub-windows-amd64.exe.sha256 skill-hub-windows-amd64.sha256
-          mv skill-hub-windows-arm64.exe.sha256 skill-hub-windows-arm64.sha256
-
-      - name: Create release archive
-        run: |
-          # 为每个平台创建压缩包
-          mkdir -p dist
-
-          # Linux amd64
-          mkdir -p skill-hub-linux-amd64-pkg
-          cp skill-hub-linux-amd64 skill-hub-linux-amd64-pkg/skill-hub
-          cp skill-hub-linux-amd64.sha256 skill-hub-linux-amd64-pkg/
-          cp README.md skill-hub-linux-amd64-pkg/
-          cp LICENSE skill-hub-linux-amd64-pkg/
-          tar -czf dist/skill-hub-linux-amd64.tar.gz -C skill-hub-linux-amd64-pkg .
-
-          # Linux arm64
-          mkdir -p skill-hub-linux-arm64-pkg
-          cp skill-hub-linux-arm64 skill-hub-linux-arm64-pkg/skill-hub
-          cp skill-hub-linux-arm64.sha256 skill-hub-linux-arm64-pkg/
-          cp README.md skill-hub-linux-arm64-pkg/
-          cp LICENSE skill-hub-linux-arm64-pkg/
-          tar -czf dist/skill-hub-linux-arm64.tar.gz -C skill-hub-linux-arm64-pkg .
-
-          # macOS amd64
-          mkdir -p skill-hub-darwin-amd64-pkg
-          cp skill-hub-darwin-amd64 skill-hub-darwin-amd64-pkg/skill-hub
-          cp skill-hub-darwin-amd64.sha256 skill-hub-darwin-amd64-pkg/
-          cp README.md skill-hub-darwin-amd64-pkg/
-          cp LICENSE skill-hub-darwin-amd64-pkg/
-          tar -czf dist/skill-hub-darwin-amd64.tar.gz -C skill-hub-darwin-amd64-pkg .
-
-          # macOS arm64
-          mkdir -p skill-hub-darwin-arm64-pkg
-          cp skill-hub-darwin-arm64 skill-hub-darwin-arm64-pkg/skill-hub
-          cp skill-hub-darwin-arm64.sha256 skill-hub-darwin-arm64-pkg/
-          cp README.md skill-hub-darwin-arm64-pkg/
-          cp LICENSE skill-hub-darwin-arm64-pkg/
-          tar -czf dist/skill-hub-darwin-arm64.tar.gz -C skill-hub-darwin-arm64-pkg .
-
-          # Windows amd64
-          mkdir -p skill-hub-windows-amd64-pkg
-          cp skill-hub-windows-amd64.exe skill-hub-windows-amd64-pkg/skill-hub.exe
-          cp skill-hub-windows-amd64.sha256 skill-hub-windows-amd64-pkg/
-          cp README.md skill-hub-windows-amd64-pkg/
-          cp LICENSE skill-hub-windows-amd64-pkg/
-          tar -czf dist/skill-hub-windows-amd64.tar.gz -C skill-hub-windows-amd64-pkg .
-
-          # Windows arm64
-          mkdir -p skill-hub-windows-arm64-pkg
-          cp skill-hub-windows-arm64.exe skill-hub-windows-arm64-pkg/skill-hub.exe
-          cp skill-hub-windows-arm64.sha256 skill-hub-windows-arm64-pkg/
-          cp README.md skill-hub-windows-arm64-pkg/
-          cp LICENSE skill-hub-windows-arm64-pkg/
-          tar -czf dist/skill-hub-windows-arm64.tar.gz -C skill-hub-windows-arm64-pkg .
+          # 清理原始二进制文件，只保留压缩包和校验文件
+          rm -f skill-hub-*
+          rm -f skill-hub-*.sha256
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -123,6 +98,6 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*.tar.gz
-            skill-hub-*.sha256
+            dist/*.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

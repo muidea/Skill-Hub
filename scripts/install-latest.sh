@@ -326,7 +326,7 @@ main() {
         echo "• 程序名称: Skill Hub"
         echo "• 可执行文件: $ACTUAL_BINARY"
         echo "• 安装位置: ~/.local/bin/$ACTUAL_BINARY"
-        echo "• 版本: v0.1.2"
+        echo "• 版本: $VERSION"
         echo "• 文件大小: $(du -h "$ACTUAL_BINARY" | cut -f1)"
         
         # 检查并自动配置PATH
@@ -450,7 +450,18 @@ main() {
         
         echo ""
         echo "版本信息:"
-        "$ACTUAL_BINARY" --version
+        local version_output
+        version_output=$("$ACTUAL_BINARY" --version 2>&1)
+        echo "$version_output"
+        
+        # 检查版本信息是否为空
+        if [[ "$version_output" == *"version  (commit: , built: )"* ]]; then
+            echo -e "\n${YELLOW}⚠️  版本信息说明:${NC}"
+            echo "当前版本的二进制文件编译时未嵌入版本信息。"
+            echo "这不会影响功能使用，只是显示信息不完整。"
+            echo "实际版本: $VERSION (从GitHub Releases获取)"
+        fi
+        
         echo ""
         echo "📖 基本使用:"
         echo "  1. 查看帮助: $ACTUAL_BINARY --help"

@@ -46,7 +46,9 @@ release-all: clean
 	GOOS=windows GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o dist/skill-hub-windows-arm64.exe ./cmd/skill-hub
 	
 	# Create checksums
-	cd dist && sha256sum * > checksums.txt
+	cd dist && for file in skill-hub-*; do \
+	  sha256sum "$$file" > "$$file.sha256"; \
+	done
 	
 	@echo "Release binaries created in dist/ directory"
 
