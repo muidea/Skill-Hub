@@ -243,24 +243,14 @@ main() {
         echo "2. GitHub Releases 文件可能还未完全就绪"
         echo "3. 网络连接问题"
         echo ""
-        echo -e "${YELLOW}尝试备用方案: 使用上一个稳定版本 v0.1.3${NC}"
-        
-        # 尝试上一个版本
-        PREVIOUS_VERSION="v0.1.3"
-        DOWNLOAD_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$PREVIOUS_VERSION/$ARCHIVE_NAME"
-        CHECKSUM_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$PREVIOUS_VERSION/$CHECKSUM_NAME"
-        
-        echo "尝试下载: $PREVIOUS_VERSION"
-        if ! download_file "$DOWNLOAD_URL" "$ARCHIVE_NAME"; then
-            echo -e "${RED}备用版本下载也失败${NC}"
-            cd /
-            rm -rf "$TEMP_DIR"
-            exit 1
-        fi
-        
-        # 更新版本变量
-        VERSION="$PREVIOUS_VERSION"
-        echo "使用版本: $VERSION"
+        echo -e "${RED}错误: 无法下载指定版本的文件${NC}"
+        echo "请检查:"
+        echo "  - Release $VERSION 是否存在: https://github.com/$REPO_OWNER/$REPO_NAME/releases/tag/$VERSION"
+        echo "  - 文件是否存在: $ARCHIVE_NAME"
+        echo "  - 网络连接是否正常"
+        cd /
+        rm -rf "$TEMP_DIR"
+        exit 1
     fi
     
     # 下载校验文件（使用当前有效的版本）
