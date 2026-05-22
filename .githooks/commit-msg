@@ -1,0 +1,7 @@
+#!/bin/sh
+
+msg_file=$1
+tmp_file="${msg_file}.skill-hub-clean.$$"
+
+sed '/^[[:space:]]*[Cc]o-[Aa]uthored-[Bb]y:[[:space:]]*.*[Cc]laude/d' "$msg_file" > "$tmp_file" || exit 1
+mv "$tmp_file" "$msg_file" || exit 1

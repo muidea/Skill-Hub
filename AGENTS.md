@@ -26,6 +26,7 @@ Add table-driven Go tests beside the package under test, using `*_test.go` and d
 ## Commit & Pull Request Guidelines
 
 History follows Conventional Commit-style prefixes: `feat:`, `fix:`, `docs:`, `test:`, and `ci:`. Keep commits scoped and include docs/tests with behavior changes. Pull requests should describe the user-visible change, list validation commands, link issues when relevant, and include screenshots only for Web UI changes.
+Do not add AI co-author trailers such as `Co-Authored-By: Claude ...` to commit messages.
 
 ## Security & Release Notes
 
