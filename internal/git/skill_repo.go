@@ -21,6 +21,12 @@ type SkillRepository struct {
 	repo *Repository
 }
 
+type skillVersionConflict struct {
+	SkillID       string
+	LocalVersion  string
+	RemoteVersion string
+}
+
 // NewSkillRepository 创建技能仓库管理器
 func NewSkillRepository() (*SkillRepository, error) {
 	repo, err := NewSkillsRepository()
@@ -140,6 +146,10 @@ func (sr *SkillRepository) PushChanges(message string) error {
 		return fmt.Errorf("技能仓库未初始化，请先设置远程仓库URL")
 	}
 
+	if err := sr.resolveRemoteSkillUpdatesByVersion(); err != nil {
+		return err
+	}
+
 	// 检查是否有更改
 	status, err := sr.repo.GetStatus()
 	if err != nil {
@@ -163,11 +173,276 @@ func (sr *SkillRepository) PushChanges(message string) error {
 	// 推送到远程
 	fmt.Println("推送到远程仓库...")
 	if err := sr.repo.Push(); err != nil {
+		if _, ok := err.(*NonFastForwardError); ok {
+			fmt.Println("远程仓库已有新提交，按技能版本自动合并后重试推送...")
+			if resolveErr := sr.resolveRemoteSkillUpdatesByVersion(); resolveErr != nil {
+				return fmt.Errorf("自动合并远程更新失败: %w", resolveErr)
+			}
+			if err := sr.repo.Push(); err != nil {
+				return fmt.Errorf("推送失败: %w", err)
+			}
+			fmt.Println("✅ 更改已推送到远程仓库")
+			return nil
+		}
 		return fmt.Errorf("推送失败: %w", err)
 	}
 
 	fmt.Println("✅ 更改已推送到远程仓库")
 	return nil
+}
+
+func (sr *SkillRepository) resolveRemoteSkillUpdatesByVersion() error {
+	updates, err := sr.repo.CheckRemoteUpdates()
+	if err != nil {
+		return fmt.Errorf("检查远程更新失败: %w", err)
+	}
+	if updates == nil || updates.Behind == 0 {
+		return nil
+	}
+
+	status, err := sr.repo.GetStatus()
+	if err != nil {
+		return fmt.Errorf("获取仓库状态失败: %w", err)
+	}
+
+	hadLocalChanges := hasRepositoryChanges(status)
+	stashed := false
+	if hadLocalChanges {
+		if err := sr.stashLocalChanges(); err != nil {
+			return err
+		}
+		stashed = true
+	}
+
+	if updates.Ahead > 0 {
+		fmt.Println("本地与远程存在分叉，按 skill 版本自动合并远程更新...")
+		if err := sr.repo.MergeRemoteMainAllowConflicts(); err != nil {
+			return err
+		}
+		if err := sr.resolveSkillConflictsByVersion(); err != nil {
+			return err
+		}
+	} else {
+		fmt.Println("从远程仓库拉取最新更改...")
+		if err := sr.repo.Pull(); err != nil {
+			if stashed {
+				return fmt.Errorf("拉取远程更新失败，本地更改仍保留在 stash 中: %w", err)
+			}
+			return fmt.Errorf("拉取远程更新失败: %w", err)
+		}
+	}
+
+	if stashed {
+		fmt.Println("恢复本地更改并按 skill 版本解决冲突...")
+		if err := sr.popStashedChangesAllowConflicts(); err != nil {
+			return err
+		}
+		if err := sr.resolveSkillConflictsByVersion(); err != nil {
+			return err
+		}
+	}
+
+	if err := sr.UpdateRegistry(); err != nil {
+		return fmt.Errorf("刷新技能索引失败: %w", err)
+	}
+	if err := sr.commitAutoMergeIfNeeded(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (sr *SkillRepository) popStashedChangesAllowConflicts() error {
+	output, err := exec.Command("git", "-C", sr.repo.GetPath(), "stash", "pop").CombinedOutput()
+	if len(output) > 0 {
+		fmt.Print(string(output))
+	}
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(string(output), "CONFLICT") {
+		return nil
+	}
+	return fmt.Errorf("恢复本地更改失败: %s: %w", strings.TrimSpace(string(output)), err)
+}
+
+func (sr *SkillRepository) resolveSkillConflictsByVersion() error {
+	if err := sr.resolveRegistryConflict(); err != nil {
+		return err
+	}
+
+	unmerged, err := sr.unmergedSkillIDs()
+	if err != nil {
+		return err
+	}
+	if len(unmerged) == 0 {
+		return nil
+	}
+
+	var unresolved []skillVersionConflict
+	for _, skillID := range unmerged {
+		choice, localVersion, remoteVersion, err := sr.chooseSkillConflictSide(skillID)
+		if err != nil {
+			return err
+		}
+		switch choice {
+		case "ours":
+			if err := sr.checkoutConflictSkillSide(skillID, "--ours"); err != nil {
+				return err
+			}
+			fmt.Printf("保留本地版本: %s local=%s remote=%s\n", skillID, localVersion, remoteVersion)
+		case "theirs":
+			if err := sr.checkoutConflictSkillSide(skillID, "--theirs"); err != nil {
+				return err
+			}
+			fmt.Printf("采用远端版本: %s local=%s remote=%s\n", skillID, localVersion, remoteVersion)
+		default:
+			unresolved = append(unresolved, skillVersionConflict{
+				SkillID:       skillID,
+				LocalVersion:  localVersion,
+				RemoteVersion: remoteVersion,
+			})
+		}
+	}
+
+	if len(unresolved) > 0 {
+		var lines []string
+		for _, item := range unresolved {
+			lines = append(lines, fmt.Sprintf("%s local=%s remote=%s", item.SkillID, item.LocalVersion, item.RemoteVersion))
+		}
+		return fmt.Errorf("存在版本相同但内容冲突的技能，无法自动选择:\n%s", strings.Join(lines, "\n"))
+	}
+
+	return sr.commitAutoMergeIfNeeded()
+}
+
+func (sr *SkillRepository) commitAutoMergeIfNeeded() error {
+	status, err := sr.repo.GetStatus()
+	if err != nil {
+		return err
+	}
+	if hasRepositoryChanges(status) {
+		return sr.repo.CommitWithSystemGit("resolve skill version conflicts")
+	}
+	return nil
+}
+
+func (sr *SkillRepository) resolveRegistryConflict() error {
+	output, err := exec.Command("git", "-C", sr.repo.GetPath(), "diff", "--name-only", "--diff-filter=U", "--", "registry.json").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("检查 registry.json 冲突失败: %s: %w", strings.TrimSpace(string(output)), err)
+	}
+	if strings.TrimSpace(string(output)) == "" {
+		return nil
+	}
+	if err := sr.UpdateRegistry(); err != nil {
+		return fmt.Errorf("重建 registry.json 失败: %w", err)
+	}
+	output, err = exec.Command("git", "-C", sr.repo.GetPath(), "add", "registry.json").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("暂存 registry.json 合并结果失败: %s: %w", strings.TrimSpace(string(output)), err)
+	}
+	return nil
+}
+
+func (sr *SkillRepository) unmergedSkillIDs() ([]string, error) {
+	output, err := exec.Command("git", "-C", sr.repo.GetPath(), "diff", "--name-only", "--diff-filter=U").CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("读取冲突文件失败: %s: %w", strings.TrimSpace(string(output)), err)
+	}
+
+	ids := map[string]bool{}
+	for _, line := range strings.Split(string(output), "\n") {
+		parts := strings.Split(filepath.ToSlash(strings.TrimSpace(line)), "/")
+		if len(parts) >= 3 && parts[0] == "skills" {
+			ids[parts[1]] = true
+		}
+	}
+
+	result := make([]string, 0, len(ids))
+	for id := range ids {
+		result = append(result, id)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+func (sr *SkillRepository) chooseSkillConflictSide(skillID string) (string, string, string, error) {
+	localVersion, err := sr.conflictSkillVersion(skillID, ":2:")
+	if err != nil {
+		return "", "", "", err
+	}
+	remoteVersion, err := sr.conflictSkillVersion(skillID, ":3:")
+	if err != nil {
+		return "", "", "", err
+	}
+
+	cmp := compareSkillVersions(localVersion, remoteVersion)
+	switch {
+	case cmp > 0:
+		return "ours", localVersion, remoteVersion, nil
+	case cmp < 0:
+		return "theirs", localVersion, remoteVersion, nil
+	default:
+		return "", localVersion, remoteVersion, nil
+	}
+}
+
+func (sr *SkillRepository) conflictSkillVersion(skillID, stagePrefix string) (string, error) {
+	ref := fmt.Sprintf("%sskills/%s/SKILL.md", stagePrefix, skillID)
+	output, err := exec.Command("git", "-C", sr.repo.GetPath(), "show", ref).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("读取技能 %s 的冲突版本失败: %s: %w", skillID, strings.TrimSpace(string(output)), err)
+	}
+	return skill.ExtractVersion(output), nil
+}
+
+func (sr *SkillRepository) checkoutConflictSkillSide(skillID, side string) error {
+	pattern := fmt.Sprintf("skills/%s", skillID)
+	output, err := exec.Command("git", "-C", sr.repo.GetPath(), "checkout", side, "--", pattern).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("选择技能 %s 的%s版本失败: %s: %w", skillID, side, strings.TrimSpace(string(output)), err)
+	}
+	output, err = exec.Command("git", "-C", sr.repo.GetPath(), "add", pattern).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("暂存技能 %s 合并结果失败: %s: %w", skillID, strings.TrimSpace(string(output)), err)
+	}
+	return nil
+}
+
+func compareSkillVersions(v1, v2 string) int {
+	v1 = strings.Trim(v1, `" vV`)
+	v2 = strings.Trim(v2, `" vV`)
+	if v1 == v2 {
+		return 0
+	}
+
+	v1Parts := strings.Split(v1, ".")
+	v2Parts := strings.Split(v2, ".")
+	maxLen := len(v1Parts)
+	if len(v2Parts) > maxLen {
+		maxLen = len(v2Parts)
+	}
+	for i := 0; i < maxLen; i++ {
+		num1 := 0
+		num2 := 0
+		if i < len(v1Parts) {
+			fmt.Sscanf(v1Parts[i], "%d", &num1)
+		}
+		if i < len(v2Parts) {
+			fmt.Sscanf(v2Parts[i], "%d", &num2)
+		}
+		if num1 > num2 {
+			return 1
+		}
+		if num1 < num2 {
+			return -1
+		}
+	}
+
+	if v1 > v2 {
+		return 1
+	}
+	return -1
 }
 
 func SuggestedCommitMessageFromStatus(status string) string {

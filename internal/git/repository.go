@@ -36,6 +36,14 @@ type RemoteUpdateStatus struct {
 	Behind       int    `json:"behind"`
 }
 
+type NonFastForwardError struct {
+	Message string
+}
+
+func (e *NonFastForwardError) Error() string {
+	return e.Message
+}
+
 // NewRepository 创建或打开一个Git仓库
 func NewRepository(repoPath string) (*Repository, error) {
 	// 确保目录存在
@@ -247,6 +255,49 @@ func (r *Repository) Pull() error {
 	return nil
 }
 
+func (r *Repository) MergeRemoteMainAllowConflicts() error {
+	if r.remoteURL == "" {
+		return fmt.Errorf("未设置远程仓库URL")
+	}
+
+	cmd := exec.Command("git", "-C", r.path, "merge", "--no-edit", r.remoteName+"/main")
+	output, err := cmd.CombinedOutput()
+	if len(output) > 0 {
+		fmt.Print(string(output))
+	}
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(string(output), "CONFLICT") {
+		return nil
+	}
+	outputText := strings.TrimSpace(string(output))
+	if outputText != "" {
+		return fmt.Errorf("合并远程更新失败: %s: %w", outputText, err)
+	}
+	return fmt.Errorf("合并远程更新失败: %w", err)
+}
+
+func (r *Repository) FetchMain() error {
+	if r.remoteURL == "" {
+		return fmt.Errorf("未设置远程仓库URL")
+	}
+
+	cmd := exec.Command("git", "-C", r.path, "fetch", r.remoteName, "main")
+	output, err := cmd.CombinedOutput()
+	if len(output) > 0 {
+		fmt.Print(string(output))
+	}
+	if err != nil {
+		outputText := strings.TrimSpace(string(output))
+		if outputText != "" {
+			return fmt.Errorf("获取远程更新失败: %s: %w", outputText, err)
+		}
+		return fmt.Errorf("获取远程更新失败: %w", err)
+	}
+	return nil
+}
+
 func (r *Repository) CheckRemoteUpdates() (*RemoteUpdateStatus, error) {
 	result := &RemoteUpdateStatus{
 		Status:    "unknown",
@@ -263,13 +314,7 @@ func (r *Repository) CheckRemoteUpdates() (*RemoteUpdateStatus, error) {
 		return result, nil
 	}
 
-	cmd := exec.Command("git", "-C", r.path, "fetch", r.remoteName, "main")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		outputText := strings.TrimSpace(string(output))
-		if outputText != "" {
-			return nil, fmt.Errorf("检查远程更新失败: %s: %w", outputText, err)
-		}
+	if err := r.FetchMain(); err != nil {
 		return nil, fmt.Errorf("检查远程更新失败: %w", err)
 	}
 
@@ -384,6 +429,9 @@ func (r *Repository) Push() error {
 			errMsg = fmt.Sprintf("推送失败: %s: %v", outputText, err)
 		}
 		diagnosticText := err.Error() + "\n" + outputText
+		if isNonFastForwardOutput(diagnosticText) {
+			return &NonFastForwardError{Message: errMsg}
+		}
 		if strings.Contains(diagnosticText, "SSH_AUTH_SOCK") {
 			errMsg += "\nSSH认证失败: 请确保SSH agent正在运行或使用HTTPS URL"
 			if strings.HasPrefix(r.remoteURL, "git@") {
@@ -406,6 +454,12 @@ func (r *Repository) Push() error {
 	}
 
 	return nil
+}
+
+func isNonFastForwardOutput(output string) bool {
+	return strings.Contains(output, "fetch first") ||
+		strings.Contains(output, "non-fast-forward") ||
+		strings.Contains(output, "Updates were rejected")
 }
 
 // Commit 提交更改
@@ -436,6 +490,22 @@ func (r *Repository) Commit(message string) error {
 		All: true,
 	})
 	return err
+}
+
+func (r *Repository) CommitWithSystemGit(message string) error {
+	addOutput, err := exec.Command("git", "-C", r.path, "add", "-A").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("添加文件失败: %s: %w", strings.TrimSpace(string(addOutput)), err)
+	}
+
+	commitOutput, err := exec.Command("git", "-C", r.path, "commit", "-m", message).CombinedOutput()
+	if len(commitOutput) > 0 {
+		fmt.Print(string(commitOutput))
+	}
+	if err != nil {
+		return fmt.Errorf("提交失败: %s: %w", strings.TrimSpace(string(commitOutput)), err)
+	}
+	return nil
 }
 
 // GetStatus 获取仓库状态

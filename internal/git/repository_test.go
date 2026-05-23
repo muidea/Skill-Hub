@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/muidea/skill-hub/internal/config"
 )
 
 func TestConvertSSHToHTTPS(t *testing.T) {
@@ -265,6 +267,74 @@ func TestPullUsesSystemGit(t *testing.T) {
 	}
 }
 
+func TestSkillRepositoryResolvesRemoteSkillConflictByHigherVersion(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git executable not available")
+	}
+
+	tmpDir := t.TempDir()
+	t.Setenv("SKILL_HUB_HOME", tmpDir)
+	defer config.ResetForTest()
+
+	remoteDir := filepath.Join(tmpDir, "remote.git")
+	seedDir := filepath.Join(tmpDir, "seed")
+	localDir := filepath.Join(tmpDir, "repositories", "main")
+	configContent := `multi_repo:
+  enabled: true
+  default_repo: "main"
+  repositories:
+    main:
+      name: "main"
+      url: "` + remoteDir + `"
+      branch: "main"
+      enabled: true
+      type: "user"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	runGitCommand(t, tmpDir, "init", "--bare", remoteDir)
+	runGitCommand(t, tmpDir, "init", "-b", "main", seedDir)
+	runGitCommand(t, seedDir, "config", "user.name", "tester")
+	runGitCommand(t, seedDir, "config", "user.email", "tester@example.com")
+	runGitCommand(t, seedDir, "remote", "add", "origin", remoteDir)
+	writeSkillSystemGitCommit(t, seedDir, "demo", "1.0.0", "initial", "initial skill")
+	runGitCommand(t, seedDir, "push", "origin", "main")
+
+	runGitCommand(t, tmpDir, "clone", "--branch", "main", remoteDir, localDir)
+	runGitCommand(t, localDir, "config", "user.name", "tester")
+	runGitCommand(t, localDir, "config", "user.email", "tester@example.com")
+
+	writeSkillSystemGitCommit(t, seedDir, "demo", "2.0.0", "remote", "remote higher version")
+	runGitCommand(t, seedDir, "push", "origin", "main")
+
+	writeSkillSystemGitCommit(t, localDir, "demo", "1.1.0", "local", "local lower version")
+
+	repo, err := NewRepository(localDir)
+	if err != nil {
+		t.Fatalf("open local repo: %v", err)
+	}
+	sr := &SkillRepository{repo: repo}
+	if err := sr.resolveRemoteSkillUpdatesByVersion(); err != nil {
+		t.Fatalf("resolveRemoteSkillUpdatesByVersion() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(localDir, "skills", "demo", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read resolved skill: %v", err)
+	}
+	if got := string(content); !strings.Contains(got, "version: 2.0.0") || !strings.Contains(got, "remote") {
+		t.Fatalf("resolved skill should keep remote higher version, got:\n%s", got)
+	}
+	if output := runGitCommand(t, localDir, "status", "--porcelain"); output != "" {
+		t.Fatalf("working tree should be clean after auto resolve, got %q", output)
+	}
+	if err := repo.Push(); err != nil {
+		t.Fatalf("push resolved history: %v", err)
+	}
+}
+
 func writeAndCommit(t *testing.T, worktree *gogit.Worktree, repoDir, content string) {
 	t.Helper()
 	filePath := filepath.Join(repoDir, "README.md")
@@ -302,5 +372,19 @@ func writeSystemGitCommit(t *testing.T, dir, fileName, content, message string) 
 		t.Fatalf("write %s: %v", fileName, err)
 	}
 	runGitCommand(t, dir, "add", fileName)
+	runGitCommand(t, dir, "commit", "-m", message)
+}
+
+func writeSkillSystemGitCommit(t *testing.T, dir, skillID, version, body, message string) {
+	t.Helper()
+	skillDir := filepath.Join(dir, "skills", skillID)
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	content := "---\nname: Demo\nversion: " + version + "\n---\n" + body + "\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+	runGitCommand(t, dir, "add", ".")
 	runGitCommand(t, dir, "commit", "-m", message)
 }
