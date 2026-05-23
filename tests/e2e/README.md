@@ -20,12 +20,14 @@ Based on the business scenarios defined in the repo test documents and current C
    - Enabling skills with `skill-hub use`
    - Physical application with `skill-hub apply`
    - State updates without target inputs
+   - Specific `apply <id>` refreshes repository-newer project copies and records source fingerprints
 
 3. **Iteration Feedback Workflow** (`test_scenario3.py`)
    - Project file modification detection
    - Status checking with `skill-hub status`
    - Synchronization back to repository with `skill-hub feedback`
    - Standard modification extraction
+   - Feedback is blocked when a project copy is modified from an older version than the repository source
 
 4. **Cancel and Cleanup Workflow** (`test_scenario4.py`)
    - Skill removal with `skill-hub remove`
@@ -92,6 +94,12 @@ Based on the business scenarios defined in the repo test documents and current C
 14. **Batch Feedback JSON** (`test_feedback_all_json.py`)
    - `skill-hub feedback --all --force --json` archives all registered project skills
    - JSON output reports total, applied, skipped, planned, failed, and per-skill results
+
+15. **Outdated Project Skill Guard** (`test_project_apply_outdated.py`)
+   - `skill-hub status --json` reports `Outdated` when the repository version is newer and the project copy is unchanged
+   - `skill-hub apply <id>` refreshes the project copy to the repository version and returns to `Synced`
+   - `skill-hub status --json` reports `ModifiedAgainstOutdatedRepo` when the project copy was edited from an older version
+   - `skill-hub feedback <id>` rejects stale project-copy feedback so repository higher versions are not overwritten
 
 ## Architecture
 

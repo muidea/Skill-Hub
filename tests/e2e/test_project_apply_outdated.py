@@ -75,3 +75,43 @@ metadata:
         assert after["status"] == "Synced", after
         assert after["local_version"] == "1.1.0"
         assert after["repo_version"] == "1.1.0"
+
+    def test_modified_outdated_skill_blocks_feedback_until_apply(self):
+        skill_id = "outdated-feedback-guard-demo"
+
+        init_result = self.cmd.run("init", cwd=str(self.project_dir))
+        assert init_result.success, f"init failed: {init_result.stderr}\n{init_result.stdout}"
+
+        self._write_repo_skill(skill_id, "1.0.0", "repo-v1")
+
+        use_result = self.cmd.run("use", [skill_id], cwd=str(self.project_dir))
+        assert use_result.success, f"use failed: {use_result.stderr}\n{use_result.stdout}"
+
+        apply_initial = self.cmd.run("apply", [skill_id], cwd=str(self.project_dir))
+        assert apply_initial.success, f"initial apply failed: {apply_initial.stderr}\n{apply_initial.stdout}"
+
+        self._write_repo_skill(skill_id, "1.1.0", "repo-v2")
+
+        project_skill_md = self.project_skills_dir / skill_id / "SKILL.md"
+        project_skill_md.write_text(
+            project_skill_md.read_text(encoding="utf-8") + "\n\nlocal stale edit\n",
+            encoding="utf-8",
+        )
+
+        status = self._status_item(skill_id)
+        assert status["status"] == "ModifiedAgainstOutdatedRepo", status
+        assert status["local_version"] == "1.0.0"
+        assert status["repo_version"] == "1.1.0"
+
+        dry_run = self.cmd.run("feedback", [skill_id, "--dry-run"], cwd=str(self.project_dir))
+        assert not dry_run.success
+        assert "低于默认仓库版本" in (dry_run.stderr + dry_run.stdout)
+
+        forced = self.cmd.run("feedback", [skill_id, "--force"], cwd=str(self.project_dir))
+        assert not forced.success
+        assert "skill-hub apply" in (forced.stderr + forced.stdout)
+
+        repo_skill_md = self.repo_skills_dir / skill_id / "SKILL.md"
+        repo_content = repo_skill_md.read_text(encoding="utf-8")
+        assert "repo-v2" in repo_content
+        assert "local stale edit" not in repo_content

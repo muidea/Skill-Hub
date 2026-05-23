@@ -214,7 +214,7 @@ func runFeedback(skillID string) error {
 	}
 
 	versionUpdated := false
-	if (hasContentChanges || len(changes) > 0) && !feedbackDryRun {
+	if hasContentChanges || len(changes) > 0 {
 		projectVersion := normalizeVersionToXYZ(getSkillVersionFromContent(projectContent))
 		repoVersion := "0.0.0"
 		if skillExists && len(repoContent) > 0 {
@@ -229,6 +229,12 @@ func runFeedback(skillID string) error {
 				repoVersion,
 				skillID,
 			)
+		}
+
+		if feedbackDryRun {
+			fmt.Println("========================================")
+			fmt.Println("\n✅ 演习模式完成，未进行实际修改")
+			return nil
 		}
 
 		if compareVersions(projectVersion, repoVersion) <= 0 {

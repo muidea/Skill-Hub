@@ -604,6 +604,7 @@ skill-hub use git-expert --global --agent codex
 - `Synced`: 本地与仓库一致
 - `Modified`: 本地有未反馈的修改（含子目录内文件变更）
 - `Outdated`: 仓库版本领先于本地
+- `ModifiedAgainstOutdatedRepo`: 仓库版本领先于本地，且项目工作区副本已基于旧版本发生本地修改；`feedback` 会阻断该状态，需先 `apply <id>` 刷新并手工迁移必要修改
 - `Missing`: 技能已启用但本地文件缺失
 
 使用 `--global` 时，状态语义切换为全局一致性检查：
@@ -663,7 +664,7 @@ skill-hub status git-expert --global --agent codex
 
 - 当本地服务模式可用时，CLI 会优先通过服务桥接执行
 - 服务端负责实际适配器调用和项目文件分发
-- 项目级 `apply <id>` 会在刷新成功后将项目状态中的版本和状态更新为仓库版本与 `Synced`
+- 项目级 `apply <id>` 会在刷新成功后将项目状态中的版本、状态和来源目录指纹更新为仓库版本、`Synced` 与 `applied_hash`
 - 项目级 `apply <id>` 显式指定未启用技能时返回 `SKILL_NOT_FOUND`
 - 当显式指定的全局 skill 尚未启用，或 `--agent` 与该 skill 的全局启用目标不匹配时，返回 `SKILL_NOT_FOUND`，不会静默跳过刷新
 
@@ -714,6 +715,8 @@ skill-hub apply git-expert --global --agent codex
 - 当本地服务模式可用时，CLI 会优先通过服务桥接执行
 - 服务桥接路径会先执行反馈预览，再根据参数或确认执行实际归档
 - 服务端负责版本推进、归档和索引刷新
+- 当项目工作区 skill 版本低于默认仓库版本时，`feedback` 默认拒绝归档并提示先执行 `skill-hub apply <id>`，避免旧版本工作区副本覆盖仓库高版本内容。`--force` 不会绕过该版本新鲜度防护。
+- 当项目工作区与默认仓库同版本但内容不同，仍沿用现有逻辑自动 bump patch 后归档。
 - `--all` 会按当前项目状态中登记的技能逐个执行反馈。为避免误批量归档，实际写入时必须显式提供 `--force`；也可以使用 `--dry-run` 预览。`--json` 模式不会进入交互确认，实际写入同样必须显式提供 `--force`。
 
 **多仓库说明**：技能会被归档到默认仓库（通过 `skill-hub repo default` 命令设置）。如果技能在默认仓库中不存在则新增，存在则覆盖更新。
@@ -1250,3 +1253,4 @@ skill-hub repo sync --json
 | 1.26 | 2026-04-20 | `target` 降级为兼容输入，Web UI 不再展示目标选择，项目业务统一使用 `.agents/skills` |
 | 1.27 | 2026-04-20 | `serve --secret-key` 收口为远端推送保护，未配置时允许仓库拉取/同步，仅禁止默认仓库 push |
 | 1.28 | 2026-04-23 | 增加 `use/apply/status/remove --global` 本机全局技能状态、agent 目录检查刷新、服务桥接和 manifest 冲突保护 |
+| 1.29 | 2026-05-23 | 增加项目工作区 skill 来源指纹、`ModifiedAgainstOutdatedRepo` 状态和低版本 `feedback` 防护 |

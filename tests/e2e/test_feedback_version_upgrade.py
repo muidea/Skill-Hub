@@ -378,13 +378,16 @@ This is a test skill for version auto-upgrade testing.
         skill_md.write_text(content)
 
         result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
-        assert result.success
+        assert not result.success
+        assert "低于默认仓库版本" in (result.stdout + result.stderr)
 
-        # Should upgrade to 1.0.6 (based on repo version 1.0.5)
+        # Lower project versions must not be auto-upgraded over newer repository content.
         project_version = self._get_version_from_skill_md(skill_md)
-        assert project_version == "1.0.6", f"Expected version 1.0.6, got {project_version}"
+        repo_version = self._get_version_from_skill_md(self.repo_skills_dir / skill_name / "SKILL.md")
+        assert project_version == "1.0.3", f"Expected project version to remain 1.0.3, got {project_version}"
+        assert repo_version == "1.0.5", f"Expected repo version to remain 1.0.5, got {repo_version}"
 
-        print(f"  Lower version (1.0.3) upgraded to {project_version} ✓")
+        print(f"  Lower version (1.0.3) blocked against repo {repo_version} ✓")
 
         # Test case 2: Project version higher than repo
         skill_name2 = "version-compare-2"

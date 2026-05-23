@@ -10,8 +10,8 @@
 
 - 管理多个 skill 仓库，支持查看、搜索、同步和切换默认归档仓库。
 - 在项目中启用 skill，并应用到标准目录 `.agents/skills/`。
-- 检查项目 skill 是否与来源仓库一致，并刷新 `Outdated` 的本地副本。
-- 将项目中改进过的 skill 反馈回默认仓库，形成 `use -> apply -> feedback -> push` 闭环。
+- 检查项目 skill 是否与来源仓库一致，识别基于旧版本发生的本地修改，并刷新 `Outdated` 的本地副本。
+- 将项目中改进过的 skill 反馈回默认仓库；当工作区版本低于仓库版本时会先阻断反馈，避免旧副本覆盖高版本仓库内容。
 - 将托管 skill 启用到本机全局 agent skills 目录，服务 Codex、OpenCode、Claude 等工具。
 - 支持已有 skill 登记、批量导入、验证、重复副本检测、路径可移植性审计和刷新审计报告。
 - 支持本地 `serve` 模式，为 CLI 和 Web 管理提供统一的本机执行入口。
@@ -78,6 +78,8 @@ skill-hub feedback git-expert --dry-run
 skill-hub feedback git-expert --force
 skill-hub push --dry-run --json
 ```
+
+如果 `status` 显示 `ModifiedAgainstOutdatedRepo`，先执行 `skill-hub apply <id>` 刷新到仓库高版本，再把必要修改迁移到新版本后反馈。
 
 ## 本机全局 Skill
 
