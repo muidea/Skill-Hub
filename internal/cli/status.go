@@ -186,6 +186,8 @@ func renderProjectStatusSummary(summary *projectstatusservice.ProjectStatusSumma
 			statusSymbol = "🔄"
 		case spec.SkillStatusMissing:
 			statusSymbol = "❌"
+		case spec.SkillStatusModifiedAgainstOutdatedRepo:
+			statusSymbol = "⛔"
 		}
 
 		localVersion := item.LocalVersion
@@ -200,6 +202,7 @@ func renderProjectStatusSummary(summary *projectstatusservice.ProjectStatusSumma
 	fmt.Println("✅ Synced: 本地与仓库一致")
 	fmt.Println("⚠️  Modified: 本地有未反馈的修改")
 	fmt.Println("🔄 Outdated: 仓库版本领先于本地")
+	fmt.Println("⛔ ModifiedAgainstOutdatedRepo: 本地基于旧版本发生修改，反馈前需先刷新或手工合并")
 	fmt.Println("❌ Missing: 技能已启用但本地文件缺失")
 }
 

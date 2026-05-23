@@ -79,6 +79,11 @@ func (p *ProjectStatus) Inspect(projectPath, skillID string) (*ProjectStatusSumm
 		if item.LocalVersion != "" {
 			existing.Version = item.LocalVersion
 		}
+		if item.Status == spec.SkillStatusSynced {
+			if repoHash, hashErr := p.repoSkillHash(currentSkillID, skillVars.SourceRepository); hashErr == nil && repoHash != "" {
+				existing.AppliedHash = repoHash
+			}
+		}
 		projectState.Skills[currentSkillID] = existing
 	}
 
@@ -126,7 +131,7 @@ func (p *ProjectStatus) inspectSkill(projectPath, skillID string, skillVars spec
 	if repoExists {
 		equal, eqErr := skillDirsEqual(agentsSkillDir, repoSkillDir)
 		if eqErr == nil && !equal {
-			localVersion, _, localErr := getLocalSkillInfo(localSkillMdPath)
+			localVersion, localHash, localErr := getLocalSkillInfo(localSkillMdPath)
 			if localErr != nil {
 				item.Status = spec.SkillStatusModified
 				item.LocalVersion = "unknown"
@@ -134,7 +139,11 @@ func (p *ProjectStatus) inspectSkill(projectPath, skillID string, skillVars spec
 			}
 			item.LocalVersion = localVersion
 			if compareVersions(repoVersion, localVersion) > 0 {
-				item.Status = spec.SkillStatusOutdated
+				if skillVars.AppliedHash != "" && localHash == skillVars.AppliedHash {
+					item.Status = spec.SkillStatusOutdated
+				} else {
+					item.Status = spec.SkillStatusModifiedAgainstOutdatedRepo
+				}
 			} else {
 				item.Status = spec.SkillStatusModified
 			}
@@ -161,6 +170,22 @@ func (p *ProjectStatus) inspectSkill(projectPath, skillID string, skillVars spec
 		}
 	}
 	return item, nil
+}
+
+func (p *ProjectStatus) repoSkillHash(skillID, sourceRepository string) (string, error) {
+	repoName, err := p.resolveSourceRepository(sourceRepository)
+	if err != nil {
+		return "", err
+	}
+	repoPath, err := p.repositorySvc.Service().Path(repoName)
+	if err != nil {
+		return "", err
+	}
+	repoSkillDir := filepath.Join(repoPath, "skills", skillID)
+	if _, err := os.Stat(filepath.Join(repoSkillDir, "SKILL.md")); os.IsNotExist(err) {
+		return "", nil
+	}
+	return skill.DirectoryContentHash(repoSkillDir)
 }
 
 func (p *ProjectStatus) getRepoSkillInfo(skillID, sourceRepository string) (string, string, string, bool, error) {
@@ -206,7 +231,10 @@ func getLocalSkillInfo(skillMdPath string) (string, string, error) {
 	}
 
 	version := skill.ExtractVersion(content)
-	hashStr := skill.ContentHash(content)
+	hashStr, err := skill.DirectoryContentHash(filepath.Dir(skillMdPath))
+	if err != nil {
+		return "", "", err
+	}
 	return version, hashStr, nil
 }
 

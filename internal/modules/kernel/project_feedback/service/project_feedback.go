@@ -24,6 +24,8 @@ type PreviewResult struct {
 	RepoVersion       string   `json:"repo_version"`
 	ResolvedVersion   string   `json:"resolved_version"`
 	NeedsVersionBump  bool     `json:"needs_version_bump"`
+	Blocked           bool     `json:"blocked"`
+	BlockReason       string   `json:"block_reason,omitempty"`
 	NoChanges         bool     `json:"no_changes"`
 }
 
@@ -108,6 +110,12 @@ func (p *ProjectFeedback) Preview(projectPath, skillID string) (*PreviewResult, 
 
 	resolvedVersion := projectVersion
 	needsVersionBump := false
+	blocked := false
+	blockReason := ""
+	if skillExists && compareVersions(projectVersion, repoVersion) < 0 {
+		blocked = true
+		blockReason = fmt.Sprintf("项目工作区技能版本 %s 低于默认仓库版本 %s，请先执行 skill-hub apply %s 后再合并反馈", projectVersion, repoVersion, skillID)
+	}
 	if (hasContentChanges || len(changes) > 0) && compareVersions(projectVersion, repoVersion) <= 0 {
 		resolvedVersion = bumpPatchVersion(repoVersion)
 		needsVersionBump = true
@@ -124,6 +132,8 @@ func (p *ProjectFeedback) Preview(projectPath, skillID string) (*PreviewResult, 
 		RepoVersion:       repoVersion,
 		ResolvedVersion:   resolvedVersion,
 		NeedsVersionBump:  needsVersionBump,
+		Blocked:           blocked,
+		BlockReason:       blockReason,
 		NoChanges:         skillExists && len(changes) == 0 && !hasContentChanges,
 	}, nil
 }
@@ -135,6 +145,9 @@ func (p *ProjectFeedback) Apply(projectPath, skillID string) (*PreviewResult, er
 	}
 	if preview.NoChanges {
 		return preview, nil
+	}
+	if preview.Blocked {
+		return nil, errors.NewWithCode("Apply", errors.ErrValidation, preview.BlockReason)
 	}
 
 	projectSkillDir := filepath.Join(projectPath, ".agents", "skills", skillID)

@@ -3,6 +3,9 @@ package skill
 import (
 	"crypto/md5"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -66,6 +69,32 @@ func extractVersionFromData(data map[string]interface{}) string {
 func ContentHash(content []byte) string {
 	hash := md5.Sum(content)
 	return fmt.Sprintf("%x", hash)
+}
+
+func DirectoryContentHash(dir string) (string, error) {
+	var entries []string
+	if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		relPath, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, filepath.ToSlash(relPath)+"\x00"+ContentHash(content))
+		return nil
+	}); err != nil {
+		return "", err
+	}
+	sort.Strings(entries)
+	return ContentHash([]byte(strings.Join(entries, "\n"))), nil
 }
 
 func NormalizeCompatibility(compatData interface{}) string {

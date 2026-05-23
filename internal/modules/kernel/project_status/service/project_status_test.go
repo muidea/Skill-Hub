@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/muidea/skill-hub/internal/config"
+	"github.com/muidea/skill-hub/pkg/skill"
 	"github.com/muidea/skill-hub/pkg/spec"
 )
 
@@ -181,5 +182,91 @@ func TestProjectStatus_InspectUsesSourceRepository(t *testing.T) {
 	}
 	if !strings.HasSuffix(summary.Items[0].RepoPath, filepath.Join("community", "skills", "demo-skill", "SKILL.md")) {
 		t.Fatalf("unexpected repo path %q", summary.Items[0].RepoPath)
+	}
+}
+
+func TestProjectStatus_InspectModifiedAgainstOutdatedRepo(t *testing.T) {
+	config.ResetForTest()
+	defer config.ResetForTest()
+
+	homeDir := t.TempDir()
+	t.Setenv("SKILL_HUB_HOME", homeDir)
+
+	projectDir := filepath.Join(homeDir, "workspace", "demo")
+	repoSkillDir := filepath.Join(homeDir, "repositories", "main", "skills", "demo-skill")
+	localSkillDir := filepath.Join(projectDir, ".agents", "skills", "demo-skill")
+	if err := os.MkdirAll(repoSkillDir, 0755); err != nil {
+		t.Fatalf("mkdir repo skill dir: %v", err)
+	}
+	if err := os.MkdirAll(localSkillDir, 0755); err != nil {
+		t.Fatalf("mkdir local skill dir: %v", err)
+	}
+
+	appliedContent := []byte("---\nname: Demo Skill\nversion: 1.0.0\n---\napplied\n")
+	localContent := []byte("---\nname: Demo Skill\nversion: 1.0.0\n---\nlocal changed\n")
+	repoContent := []byte("---\nname: Demo Skill\nversion: 1.1.0\n---\nrepo newer\n")
+	if err := os.WriteFile(filepath.Join(repoSkillDir, "SKILL.md"), repoContent, 0644); err != nil {
+		t.Fatalf("write repo skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(localSkillDir, "SKILL.md"), localContent, 0644); err != nil {
+		t.Fatalf("write local skill: %v", err)
+	}
+	appliedDir := filepath.Join(homeDir, "applied")
+	if err := os.MkdirAll(appliedDir, 0755); err != nil {
+		t.Fatalf("mkdir applied dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(appliedDir, "SKILL.md"), appliedContent, 0644); err != nil {
+		t.Fatalf("write applied skill: %v", err)
+	}
+	appliedHash, err := skill.DirectoryContentHash(appliedDir)
+	if err != nil {
+		t.Fatalf("hash applied skill: %v", err)
+	}
+
+	cfg := &config.Config{
+		MultiRepo: &config.MultiRepoConfig{
+			Enabled:     true,
+			DefaultRepo: "main",
+			Repositories: map[string]config.RepositoryConfig{
+				"main": {Name: "main", Enabled: true},
+			},
+		},
+	}
+	if err := config.SaveConfig(cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	stateData := map[string]spec.ProjectState{
+		projectDir: {
+			ProjectPath: projectDir,
+			Skills: map[string]spec.SkillVars{
+				"demo-skill": {
+					SkillID:          "demo-skill",
+					Version:          "1.0.0",
+					Status:           spec.SkillStatusSynced,
+					SourceRepository: "main",
+					AppliedHash:      appliedHash,
+					Variables:        map[string]string{},
+				},
+			},
+		},
+	}
+	payload, err := json.Marshal(stateData)
+	if err != nil {
+		t.Fatalf("marshal state: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(homeDir, "state.json"), payload, 0644); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+
+	summary, err := New().Inspect(projectDir, "demo-skill")
+	if err != nil {
+		t.Fatalf("Inspect returned error: %v", err)
+	}
+	if len(summary.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(summary.Items))
+	}
+	if summary.Items[0].Status != spec.SkillStatusModifiedAgainstOutdatedRepo {
+		t.Fatalf("status = %q, want %q", summary.Items[0].Status, spec.SkillStatusModifiedAgainstOutdatedRepo)
 	}
 }

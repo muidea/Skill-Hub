@@ -68,3 +68,69 @@ func TestProjectFeedback_ApplyBumpsVersionAndArchives(t *testing.T) {
 		t.Fatalf("expected bumped version in archived skill, got %q", string(archivedContent))
 	}
 }
+
+func TestProjectFeedback_ApplyBlocksOutdatedProjectSkill(t *testing.T) {
+	config.ResetForTest()
+	defer config.ResetForTest()
+
+	homeDir := t.TempDir()
+	t.Setenv("SKILL_HUB_HOME", homeDir)
+
+	cfg := &config.Config{
+		MultiRepo: &config.MultiRepoConfig{
+			Enabled:     true,
+			DefaultRepo: "main",
+			Repositories: map[string]config.RepositoryConfig{
+				"main": {Name: "main", Enabled: true},
+			},
+		},
+	}
+	if err := config.SaveConfig(cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	repoSkillDir := filepath.Join(homeDir, "repositories", "main", "skills", "demo-skill")
+	projectDir := filepath.Join(homeDir, "workspace", "demo")
+	projectSkillDir := filepath.Join(projectDir, ".agents", "skills", "demo-skill")
+	if err := os.MkdirAll(repoSkillDir, 0755); err != nil {
+		t.Fatalf("mkdir repo dir: %v", err)
+	}
+	if err := os.MkdirAll(projectSkillDir, 0755); err != nil {
+		t.Fatalf("mkdir project dir: %v", err)
+	}
+
+	repoContent := "---\nname: Demo Skill\nversion: 1.1.0\n---\nRepo Newer\n"
+	projectContent := "---\nname: Demo Skill\nversion: 1.0.0\n---\nProject Changed\n"
+	if err := os.WriteFile(filepath.Join(repoSkillDir, "SKILL.md"), []byte(repoContent), 0644); err != nil {
+		t.Fatalf("write repo skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectSkillDir, "SKILL.md"), []byte(projectContent), 0644); err != nil {
+		t.Fatalf("write project skill: %v", err)
+	}
+
+	statePath := filepath.Join(homeDir, "state.json")
+	if err := os.WriteFile(statePath, []byte("{\n  \""+projectDir+"\": {\n    \"project_path\": \""+projectDir+"\",\n    \"skills\": {\n      \"demo-skill\": {\n        \"skill_id\": \"demo-skill\",\n        \"version\": \"1.0.0\",\n        \"variables\": {}\n      }\n    }\n  }\n}\n"), 0644); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+
+	preview, err := New().Preview(projectDir, "demo-skill")
+	if err != nil {
+		t.Fatalf("Preview returned error: %v", err)
+	}
+	if !preview.Blocked {
+		t.Fatalf("expected preview to be blocked: %+v", preview)
+	}
+
+	_, err = New().Apply(projectDir, "demo-skill")
+	if err == nil {
+		t.Fatal("expected Apply to reject outdated project skill")
+	}
+
+	archivedContent, err := os.ReadFile(filepath.Join(repoSkillDir, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read repo skill: %v", err)
+	}
+	if string(archivedContent) != repoContent {
+		t.Fatalf("repo skill should not be overwritten, got %q", string(archivedContent))
+	}
+}

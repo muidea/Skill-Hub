@@ -9,6 +9,7 @@ import (
 
 	"github.com/muidea/skill-hub/internal/config"
 	projectstatusservice "github.com/muidea/skill-hub/internal/modules/kernel/project_status/service"
+	"github.com/muidea/skill-hub/pkg/skill"
 	"github.com/muidea/skill-hub/pkg/spec"
 )
 
@@ -265,6 +266,13 @@ func TestProjectApply_ApplySpecificOutdatedSkillRefreshesFromRepository(t *testi
 	savedSkill := savedState[projectDir].Skills["demo-skill"]
 	if savedSkill.Version != "1.1.0" || savedSkill.Status != spec.SkillStatusSynced {
 		t.Fatalf("state skill = %+v, want version 1.1.0 and Synced", savedSkill)
+	}
+	wantHash, err := skill.DirectoryContentHash(repoSkillDir)
+	if err != nil {
+		t.Fatalf("hash repo skill: %v", err)
+	}
+	if savedSkill.AppliedHash != wantHash {
+		t.Fatalf("applied hash = %q, want %q", savedSkill.AppliedHash, wantHash)
 	}
 
 	status, err := projectstatusservice.New().Inspect(projectDir, "demo-skill")

@@ -103,7 +103,7 @@ func (p *ProjectApply) Apply(projectPath, skillID string, dryRun, force bool) (*
 			continue
 		}
 
-		appliedVersion, err := p.copyRepositorySkillToProject(projectState.ProjectPath, repoName, skillID)
+		appliedVersion, appliedHash, err := p.copyRepositorySkillToProject(projectState.ProjectPath, repoName, skillID)
 		if err != nil {
 			item.Status = "error"
 			item.Message = err.Error()
@@ -122,6 +122,7 @@ func (p *ProjectApply) Apply(projectPath, skillID string, dryRun, force bool) (*
 		if appliedVersion != "" {
 			existing.Version = appliedVersion
 		}
+		existing.AppliedHash = appliedHash
 		projectState.Skills[skillID] = existing
 	}
 
@@ -146,32 +147,36 @@ func (p *ProjectApply) resolveSourceRepository(skillVars spec.SkillVars) (string
 	return defaultRepo.Name, nil
 }
 
-func (p *ProjectApply) copyRepositorySkillToProject(projectPath, repoName, skillID string) (string, error) {
+func (p *ProjectApply) copyRepositorySkillToProject(projectPath, repoName, skillID string) (string, string, error) {
 	projectApplyCwdMu.Lock()
 	defer projectApplyCwdMu.Unlock()
 
 	repoPath, err := p.repositorySvc.Service().Path(repoName)
 	if err != nil {
-		return "", errors.Wrap(err, "copyRepositorySkillToProject: 获取仓库路径失败")
+		return "", "", errors.Wrap(err, "copyRepositorySkillToProject: 获取仓库路径失败")
 	}
 	srcDir := filepath.Join(repoPath, "skills", skillID)
 	skillMDPath := filepath.Join(srcDir, "SKILL.md")
 	if _, err := os.Stat(skillMDPath); err != nil {
 		if os.IsNotExist(err) {
-			return "", errors.NewWithCodef("copyRepositorySkillToProject", errors.ErrFileNotFound, "技能文件在仓库中不存在: %s", srcDir)
+			return "", "", errors.NewWithCodef("copyRepositorySkillToProject", errors.ErrFileNotFound, "技能文件在仓库中不存在: %s", srcDir)
 		}
-		return "", errors.Wrap(err, "copyRepositorySkillToProject: 检查仓库技能失败")
+		return "", "", errors.Wrap(err, "copyRepositorySkillToProject: 检查仓库技能失败")
 	}
 	content, err := os.ReadFile(skillMDPath)
 	if err != nil {
-		return "", errors.Wrap(err, "copyRepositorySkillToProject: 读取仓库技能失败")
+		return "", "", errors.Wrap(err, "copyRepositorySkillToProject: 读取仓库技能失败")
 	}
 	version := skill.ExtractVersion(content)
+	hash, err := skill.DirectoryContentHash(srcDir)
+	if err != nil {
+		return "", "", errors.Wrap(err, "copyRepositorySkillToProject: 计算仓库技能指纹失败")
+	}
 	dstDir := filepath.Join(projectPath, ".agents", "skills", skillID)
 	if err := syncSkillDirectory(srcDir, dstDir); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return version, nil
+	return version, hash, nil
 }
 
 func syncSkillDirectory(srcDir, dstDir string) error {

@@ -86,10 +86,11 @@ type ProjectState struct {
 
 // 技能状态常量
 const (
-	SkillStatusSynced   = "Synced"   // 本地与仓库一致
-	SkillStatusModified = "Modified" // 本地有未反馈的修改
-	SkillStatusOutdated = "Outdated" // 仓库版本领先于本地
-	SkillStatusMissing  = "Missing"  // 技能已启用但本地文件缺失
+	SkillStatusSynced                      = "Synced"                      // 本地与仓库一致
+	SkillStatusModified                    = "Modified"                    // 本地有未反馈的修改
+	SkillStatusOutdated                    = "Outdated"                    // 仓库版本领先于本地
+	SkillStatusMissing                     = "Missing"                     // 技能已启用但本地文件缺失
+	SkillStatusModifiedAgainstOutdatedRepo = "ModifiedAgainstOutdatedRepo" // 本地基于旧版本发生修改
 )
 
 // SkillVars 表示项目中某个技能的变量配置和状态
@@ -98,6 +99,8 @@ type SkillVars struct {
 	Version          string            `json:"version"`
 	Status           string            `json:"status,omitempty"`            // 技能状态：Synced, Modified, Outdated, Missing
 	SourceRepository string            `json:"source_repository,omitempty"` // 首次 use 时选中的来源仓库
+	AppliedHash      string            `json:"applied_hash,omitempty"`      // 最近一次 apply 后的技能目录内容指纹
+	AppliedCommit    string            `json:"applied_commit,omitempty"`    // 最近一次 apply 时来源仓库提交，预留字段
 	Variables        map[string]string `json:"variables"`
 }
 

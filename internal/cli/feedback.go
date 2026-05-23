@@ -220,6 +220,16 @@ func runFeedback(skillID string) error {
 		if skillExists && len(repoContent) > 0 {
 			repoVersion = normalizeVersionToXYZ(getSkillVersionFromContent(repoContent))
 		}
+		if skillExists && compareVersions(projectVersion, repoVersion) < 0 {
+			return errors.NewWithCodef(
+				"runFeedback",
+				errors.ErrValidation,
+				"项目工作区技能版本 %s 低于默认仓库版本 %s，请先执行 skill-hub apply %s 后再合并反馈",
+				projectVersion,
+				repoVersion,
+				skillID,
+			)
+		}
 
 		if compareVersions(projectVersion, repoVersion) <= 0 {
 			newVersion := bumpPatchVersion(repoVersion)
@@ -421,6 +431,9 @@ func feedbackOneViaService(client serviceFeedbackClient, projectPath, skillID st
 		}
 		return feedbackItem{SkillID: skillID, Status: "skipped", Preview: preview.Item}
 	}
+	if preview.Item != nil && preview.Item.Blocked {
+		return feedbackItem{SkillID: skillID, Status: "failed", Preview: preview.Item, Error: preview.Item.BlockReason}
+	}
 
 	if feedbackDryRun {
 		if render {
@@ -461,6 +474,9 @@ func feedbackOneLocal(projectPath, skillID string, render bool) feedbackItem {
 			fmt.Println("✅ 技能内容未修改")
 		}
 		return feedbackItem{SkillID: skillID, Status: "skipped", Preview: preview}
+	}
+	if preview.Blocked {
+		return feedbackItem{SkillID: skillID, Status: "failed", Preview: preview, Error: preview.BlockReason}
 	}
 	if feedbackDryRun {
 		if render {
@@ -545,6 +561,9 @@ func renderFeedbackPreview(preview *projectfeedbackservice.PreviewResult) {
 		fmt.Printf("\n🔧 自动升级版本号: %s -> %s\n", preview.ProjectVersion, preview.ResolvedVersion)
 	} else if preview.ProjectVersion != "" {
 		fmt.Printf("\n✓ 使用用户指定的版本号: %s\n", preview.ProjectVersion)
+	}
+	if preview.Blocked {
+		fmt.Printf("\n⛔ 已阻止反馈: %s\n", preview.BlockReason)
 	}
 	fmt.Println("========================================")
 }
