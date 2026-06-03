@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	globalservice "github.com/muidea/skill-hub/internal/modules/kernel/global/service"
+	projectstatusservice "github.com/muidea/skill-hub/internal/modules/kernel/project_status/service"
 	"github.com/muidea/skill-hub/pkg/spec"
 )
 
@@ -101,5 +103,117 @@ func TestDescribeChangeDirection(t *testing.T) {
 				t.Fatalf("describeChangeDirection() = %q, want substring %q", got, tt.wantSubstr)
 			}
 		})
+	}
+}
+
+func TestFilterStatusSummaryByIDs(t *testing.T) {
+	summary := &projectstatusservice.ProjectStatusSummary{
+		ProjectPath: "/proj",
+		SkillCount:  3,
+		Items: []projectstatusservice.SkillStatusItem{
+			{SkillID: "magic-helper", Status: spec.SkillStatusSynced},
+			{SkillID: "magic-pack", Status: spec.SkillStatusSynced},
+			{SkillID: "git-expert", Status: spec.SkillStatusModified},
+		},
+	}
+	ids := map[string]struct{}{
+		"magic-helper": {},
+		"git-expert":   {},
+		"absent":       {},
+	}
+
+	got := filterStatusSummaryByIDs(summary, ids)
+	if got == nil {
+		t.Fatalf("expected non-nil summary")
+	}
+	if got.SkillCount != 2 {
+		t.Errorf("SkillCount = %d, want 2", got.SkillCount)
+	}
+	if len(got.Items) != 2 {
+		t.Fatalf("len(Items) = %d, want 2", len(got.Items))
+	}
+	gotIDs := map[string]bool{}
+	for _, it := range got.Items {
+		gotIDs[it.SkillID] = true
+	}
+	if !gotIDs["magic-helper"] || !gotIDs["git-expert"] {
+		t.Errorf("filtered items mismatch: %v", gotIDs)
+	}
+	if gotIDs["magic-pack"] {
+		t.Errorf("magic-pack should be filtered out")
+	}
+
+	if got := filterStatusSummaryByIDs(nil, ids); got != nil {
+		t.Errorf("nil summary should return nil")
+	}
+}
+
+func TestCompilePatterns(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		wantErr  bool
+	}{
+		{name: "empty", patterns: nil, wantErr: false},
+		{name: "valid_literal", patterns: []string{"magic-skill"}, wantErr: false},
+		{name: "valid_wildcard", patterns: []string{"magic*"}, wantErr: false},
+		{name: "valid_double_star", patterns: []string{"**"}, wantErr: false},
+		{name: "lone_star_rejected", patterns: []string{"*"}, wantErr: true},
+		{name: "malformed_bracket", patterns: []string{"[abc"}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := compilePatterns(tt.patterns)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("compilePatterns(%v) err = %v, wantErr %v", tt.patterns, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestFilterGlobalStatusSummaryByIDs(t *testing.T) {
+	summary := &globalservice.StatusSummary{
+		Scope:      "global",
+		GlobalPath: "/home/.skill-hub/global/skills",
+		SkillCount: 3,
+		Items: []globalservice.StatusItem{
+			{SkillID: "magic-helper", Agent: "codex", Status: globalservice.StatusOK},
+			{SkillID: "magic-pack", Agent: "codex", Status: globalservice.StatusNotApplied},
+			{SkillID: "git-expert", Agent: "codex", Status: globalservice.StatusStale},
+		},
+	}
+	ids := map[string]struct{}{
+		"magic-helper": {},
+		"git-expert":   {},
+		"absent":       {},
+	}
+
+	got := filterGlobalStatusSummaryByIDs(summary, ids)
+	if got == nil {
+		t.Fatalf("expected non-nil summary")
+	}
+	if got.Scope != "global" || got.GlobalPath != summary.GlobalPath {
+		t.Errorf("summary metadata not preserved: scope=%q path=%q", got.Scope, got.GlobalPath)
+	}
+	if got.SkillCount != 2 {
+		t.Errorf("SkillCount = %d, want 2", got.SkillCount)
+	}
+	if len(got.Items) != 2 {
+		t.Fatalf("len(Items) = %d, want 2", len(got.Items))
+	}
+	gotIDs := map[string]bool{}
+	for _, it := range got.Items {
+		gotIDs[it.SkillID] = true
+	}
+	if !gotIDs["magic-helper"] || !gotIDs["git-expert"] {
+		t.Errorf("filtered items mismatch: %v", gotIDs)
+	}
+	if gotIDs["magic-pack"] {
+		t.Errorf("magic-pack should be filtered out")
+	}
+
+	if got := filterGlobalStatusSummaryByIDs(nil, ids); got != nil {
+		t.Errorf("nil summary should return nil")
 	}
 }

@@ -505,3 +505,143 @@ compatibility: open_code
 		t.Errorf("期望兼容性 'open_code', 实际得到 '%s'", metadata.Compatibility)
 	}
 }
+
+// writeRegistry writes a registry.json under the repository directory so that
+// listSkillsInRepository picks it up via the registry-index fast path.
+func writeRegistry(t *testing.T, repoDir string, skills []spec.SkillMetadata) {
+	t.Helper()
+	reg := spec.Registry{Version: "1.0.0", Skills: skills}
+	data, err := json.Marshal(reg)
+	if err != nil {
+		t.Fatalf("marshal registry: %v", err)
+	}
+	path := filepath.Join(repoDir, "registry.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+}
+
+func TestManager_FindSkillsByPatterns(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("SKILL_HUB_HOME", tmpDir)
+
+	mainRepo := filepath.Join(tmpDir, "repositories", "main")
+	communityRepo := filepath.Join(tmpDir, "repositories", "community")
+	if err := os.MkdirAll(mainRepo, 0755); err != nil {
+		t.Fatalf("mkdir main: %v", err)
+	}
+	if err := os.MkdirAll(communityRepo, 0755); err != nil {
+		t.Fatalf("mkdir community: %v", err)
+	}
+
+	writeRegistry(t, mainRepo, []spec.SkillMetadata{
+		{ID: "magic-team/magic-skill", Name: "Magic Skill", Version: "1.0.0", Repository: "main"},
+		{ID: "magic-team/magic-helper", Name: "Magic Helper", Version: "1.0.0", Repository: "main"},
+		{ID: "git/git-expert", Name: "Git Expert", Version: "1.0.0", Repository: "main"},
+	})
+	writeRegistry(t, communityRepo, []spec.SkillMetadata{
+		{ID: "magic-community/magic-pack", Name: "Magic Pack", Version: "0.1.0", Repository: "community"},
+		{ID: "git/git-helper", Name: "Git Helper", Version: "0.2.0", Repository: "community"},
+	})
+
+	cfg := &config.Config{
+		MultiRepo: &config.MultiRepoConfig{
+			Enabled:     true,
+			DefaultRepo: "main",
+			Repositories: map[string]config.RepositoryConfig{
+				"main":      {Name: "main", Enabled: true, IsArchive: true},
+				"community": {Name: "community", Enabled: true},
+			},
+		},
+	}
+	m := &Manager{config: cfg}
+
+	names := func(skills []spec.SkillMetadata) []string {
+		out := make([]string, 0, len(skills))
+		for _, s := range skills {
+			out = append(out, s.Name)
+		}
+		return out
+	}
+
+	t.Run("prefix star matches across repos", func(t *testing.T) {
+		got, err := m.FindSkillsByPatterns([]string{"magic*"}, nil)
+		if err != nil {
+			t.Fatalf("FindSkillsByPatterns: %v", err)
+		}
+		// Sorted by (Repository, ID): community first, then main alphabetical by ID.
+		want := []string{"Magic Pack", "Magic Helper", "Magic Skill"}
+		if !reflect.DeepEqual(names(got), want) {
+			t.Errorf("got %v, want %v", names(got), want)
+		}
+	})
+
+	t.Run("question mark matches single char", func(t *testing.T) {
+		got, err := m.FindSkillsByPatterns([]string{"magic-community/magic-?ack"}, nil)
+		if err != nil {
+			t.Fatalf("FindSkillsByPatterns: %v", err)
+		}
+		want := []string{"Magic Pack"}
+		if !reflect.DeepEqual(names(got), want) {
+			t.Errorf("got %v, want %v", names(got), want)
+		}
+	})
+
+	t.Run("double star matches all", func(t *testing.T) {
+		got, err := m.FindSkillsByPatterns([]string{"**"}, nil)
+		if err != nil {
+			t.Fatalf("FindSkillsByPatterns: %v", err)
+		}
+		if len(got) != 5 {
+			t.Errorf("expected 5 skills across both repos, got %d (%v)", len(got), names(got))
+		}
+	})
+
+	t.Run("no match returns empty", func(t *testing.T) {
+		got, err := m.FindSkillsByPatterns([]string{"no-such-prefix*"}, nil)
+		if err != nil {
+			t.Fatalf("FindSkillsByPatterns: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("expected empty, got %v", names(got))
+		}
+	})
+
+	t.Run("multiple patterns union their results, deduped", func(t *testing.T) {
+		got, err := m.FindSkillsByPatterns([]string{"magic*", "git/git-helper"}, nil)
+		if err != nil {
+			t.Fatalf("FindSkillsByPatterns: %v", err)
+		}
+		// Sorted by (Repository, ID): community/git/* then community/magic-*,
+		// then main/* alphabetical.
+		want := []string{"Git Helper", "Magic Pack", "Magic Helper", "Magic Skill"}
+		if !reflect.DeepEqual(names(got), want) {
+			t.Errorf("got %v, want %v", names(got), want)
+		}
+	})
+
+	t.Run("repo filter restricts to one repository", func(t *testing.T) {
+		got, err := m.FindSkillsByPatterns([]string{"magic*"}, []string{"community"})
+		if err != nil {
+			t.Fatalf("FindSkillsByPatterns: %v", err)
+		}
+		want := []string{"Magic Pack"}
+		if !reflect.DeepEqual(names(got), want) {
+			t.Errorf("got %v, want %v", names(got), want)
+		}
+	})
+
+	t.Run("lone star is rejected", func(t *testing.T) {
+		_, err := m.FindSkillsByPatterns([]string{"*"}, nil)
+		if err == nil {
+			t.Fatal("expected error for lone '*', got nil")
+		}
+	})
+
+	t.Run("empty pattern list is rejected", func(t *testing.T) {
+		_, err := m.FindSkillsByPatterns(nil, nil)
+		if err == nil {
+			t.Fatal("expected error for empty pattern list, got nil")
+		}
+	})
+}

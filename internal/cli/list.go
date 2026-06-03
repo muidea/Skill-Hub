@@ -6,20 +6,34 @@ import (
 	"strings"
 	"time"
 
+	"github.com/muidea/skill-hub/internal/multirepo"
 	"github.com/muidea/skill-hub/pkg/errors"
 	"github.com/muidea/skill-hub/pkg/logging"
 	"github.com/muidea/skill-hub/pkg/spec"
+	pkgutils "github.com/muidea/skill-hub/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
 var listCmd = &cobra.Command{
-	Use:   "list",
+	Use:   "list [pattern...]",
 	Short: "列出可用技能",
-	Long:  "显示本地技能仓库中的所有技能，支持按仓库过滤。",
+	Long: `显示本地技能仓库中的所有技能，支持按仓库过滤和按 ID pattern 过滤。
+
+Pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
+  *        匹配零或多个任意字符
+  ?        匹配恰好一个任意字符
+  **       匹配全部（替代单独使用 '*'）
+  [abc]    字符类（Go 语法，否定用 [^abc]）
+
+示例：
+  skill-hub list                列出所有技能
+  skill-hub list magic*         列出 ID 以 magic 开头的技能
+  skill-hub list **             列出全部（同不带参数）
+  skill-hub list --repo main    只显示 main 仓库的技能`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		repoFilters, _ := cmd.Flags().GetStringSlice("repo")
-		return runList(verbose, repoFilters)
+		return runList(verbose, repoFilters, args)
 	},
 }
 
@@ -28,15 +42,26 @@ func init() {
 	listCmd.Flags().StringSlice("repo", []string{}, "按仓库名称过滤技能列表（可多次使用指定多个仓库）")
 }
 
-func runList(verbose bool, repoFilters []string) error {
+func runList(verbose bool, repoFilters []string, patterns []string) error {
 	repoFilters = normalizeRepoFilters(repoFilters)
+
+	matchers, err := compilePatterns(patterns)
+	if err != nil {
+		return err
+	}
 
 	var skillsMetadata []spec.SkillMetadata
 	if client, ok := hubClientIfAvailable(); ok {
-		var err error
-		skillsMetadata, err = client.ListSkills(context.Background(), repoFilters)
-		if err != nil {
-			return errors.Wrap(err, "通过服务获取技能列表失败")
+		if len(matchers) == 0 {
+			skillsMetadata, err = client.ListSkills(context.Background(), repoFilters)
+			if err != nil {
+				return errors.Wrap(err, "通过服务获取技能列表失败")
+			}
+		} else {
+			skillsMetadata, err = client.FindSkillsByPatterns(context.Background(), patterns, repoFilters)
+			if err != nil {
+				return errors.Wrap(err, "通过服务按pattern获取技能列表失败")
+			}
 		}
 	} else {
 		// 检查init依赖（规范4.3：该命令依赖init命令）
@@ -49,41 +74,70 @@ func runList(verbose bool, repoFilters []string) error {
 			return errors.Wrap(err, "创建多仓库管理器失败")
 		}
 
-		if len(repoFilters) == 0 {
-			skillsMetadata, err = repoManager.ListSkills("")
-			if err != nil {
-				return errors.Wrap(err, "获取技能列表失败")
-			}
-		} else {
-			availableRepos, err := repoManager.ListRepositories()
-			if err != nil {
-				return errors.Wrap(err, "获取仓库列表失败")
-			}
-
-			validRepos := make(map[string]bool, len(availableRepos))
-			for _, repo := range availableRepos {
-				validRepos[repo.Name] = true
-			}
-
-			for _, repoFilter := range repoFilters {
-				if !validRepos[repoFilter] {
-					return errors.NewWithCodef("runList", errors.ErrConfigInvalid, "仓库 '%s' 不存在或已禁用", repoFilter)
+		if len(matchers) == 0 {
+			if len(repoFilters) == 0 {
+				skillsMetadata, err = repoManager.ListSkills("")
+				if err != nil {
+					return errors.Wrap(err, "获取技能列表失败")
+				}
+			} else {
+				if err := validateRepoFilters(repoManager, repoFilters); err != nil {
+					return err
+				}
+				skillsMetadata, err = repoManager.ListSkillsInRepositories(repoFilters)
+				if err != nil {
+					return errors.Wrap(err, "获取技能列表失败")
 				}
 			}
-
-			skillsMetadata, err = repoManager.ListSkillsInRepositories(repoFilters)
+		} else {
+			skillsMetadata, err = repoManager.FindSkillsByPatterns(patterns, repoFilters)
 			if err != nil {
-				return errors.Wrap(err, "获取技能列表失败")
+				return errors.Wrap(err, "按pattern获取技能列表失败")
 			}
 		}
 
 	}
 
-	renderSkillList(skillsMetadata, repoFilters, verbose)
+	renderSkillList(skillsMetadata, repoFilters, patterns, verbose)
 	return nil
 }
 
-func renderSkillList(skillsMetadata []spec.SkillMetadata, repoFilters []string, verbose bool) {
+// compilePatterns validates and compiles the supplied glob patterns. It
+// returns an empty slice when no patterns are given. The error is wrapped in
+// ErrInvalidInput so the CLI can show the offending pattern in the message.
+func compilePatterns(patterns []string) ([]pkgutils.Matcher, error) {
+	if len(patterns) == 0 {
+		return nil, nil
+	}
+	matchers := make([]pkgutils.Matcher, 0, len(patterns))
+	for _, p := range patterns {
+		m, err := pkgutils.CompileSkillIDPattern(p)
+		if err != nil {
+			return nil, err
+		}
+		matchers = append(matchers, m)
+	}
+	return matchers, nil
+}
+
+func validateRepoFilters(repoManager *multirepo.Manager, repoFilters []string) error {
+	availableRepos, err := repoManager.ListRepositories()
+	if err != nil {
+		return errors.Wrap(err, "获取仓库列表失败")
+	}
+	validRepos := make(map[string]bool, len(availableRepos))
+	for _, repo := range availableRepos {
+		validRepos[repo.Name] = true
+	}
+	for _, repoFilter := range repoFilters {
+		if !validRepos[repoFilter] {
+			return errors.NewWithCodef("validateRepoFilters", errors.ErrConfigInvalid, "仓库 '%s' 不存在或已禁用", repoFilter)
+		}
+	}
+	return nil
+}
+
+func renderSkillList(skillsMetadata []spec.SkillMetadata, repoFilters []string, patterns []string, verbose bool) {
 	if len(skillsMetadata) == 0 {
 		fmt.Println("ℹ️  未找到任何技能")
 		return
@@ -190,6 +244,9 @@ func renderSkillList(skillsMetadata []spec.SkillMetadata, repoFilters []string, 
 
 	if len(repoFilters) > 0 {
 		fmt.Printf("\n已过滤显示仓库: %s\n", strings.Join(repoFilters, ", "))
+	}
+	if len(patterns) > 0 {
+		fmt.Printf("已过滤显示pattern: %s\n", strings.Join(patterns, ", "))
 	}
 	fmt.Println("\n使用 'skill-hub use <skill-id>' 在当前项目启用技能")
 }

@@ -26,7 +26,7 @@ var (
 )
 
 var feedbackCmd = &cobra.Command{
-	Use:   "feedback [id]",
+	Use:   "feedback [pattern...]",
 	Short: "将项目工作区技能修改内容更新至到本地仓库",
 	Long: `将项目工作区本地的技能修改同步回本地技能仓库。
 
@@ -37,20 +37,33 @@ var feedbackCmd = &cobra.Command{
 4. 经用户确认后更新本地仓库文件
 
 使用 --dry-run 参数演习模式，仅显示将要同步的差异。
-使用 --force 参数强制更新，即使有冲突也继续执行。`,
+使用 --force 参数强制更新，即使有冲突也继续执行。
+
+Pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
+  *        匹配零或多个任意字符
+  ?        匹配恰好一个任意字符
+  **       匹配全部
+单字面量参数仍按精确 ID 处理；多参数或含通配符时按 pattern 批量解析。
+未命中任何技能时静默通过。`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		all, _ := cmd.Flags().GetBool("all")
 		if all {
 			return cobra.NoArgs(cmd, args)
 		}
-		return cobra.ExactArgs(1)(cmd, args)
+		if len(args) < 1 {
+			return cobra.ExactArgs(1)(cmd, args)
+		}
+		return nil
 	},
 	ValidArgsFunction: completeEnabledSkillIDsForCwd,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if feedbackAll {
 			return runFeedbackAll()
 		}
-		return runFeedback(args[0])
+		if len(args) == 1 && !hasWildcard(args[0]) {
+			return runFeedback(args[0])
+		}
+		return runFeedbackByPatterns(args)
 	},
 }
 
@@ -333,6 +346,52 @@ func runFeedbackAll() error {
 	}
 	if summary.Failed > 0 {
 		return errors.NewWithCodef("runFeedbackAll", errors.ErrValidation, "%d 个技能反馈失败", summary.Failed)
+	}
+	return nil
+}
+
+// runFeedbackByPatterns resolves the patterns against the cross-repo skill
+// set, then runs the structured feedback pipeline over the matched skill IDs.
+// 0 hits across all patterns is silent. --force / --dry-run must be set
+// (mirrors runFeedbackAll) since this is a batch path; --json suppresses the
+// per-skill rendering and emits the summary as JSON.
+func runFeedbackByPatterns(patterns []string) error {
+	if !feedbackForce && !feedbackDryRun {
+		return errors.NewWithCode("runFeedbackByPatterns", errors.ErrInvalidInput, "批量反馈需要 --force，或使用 --dry-run 预览")
+	}
+	if _, err := compilePatterns(patterns); err != nil {
+		return err
+	}
+	allMatches, err := resolveSkillsByPatterns(patterns)
+	if err != nil {
+		return err
+	}
+	if len(allMatches) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(allMatches))
+	ids := make([]string, 0, len(allMatches))
+	for _, s := range allMatches {
+		if _, ok := seen[s.ID]; ok {
+			continue
+		}
+		seen[s.ID] = struct{}{}
+		ids = append(ids, s.ID)
+	}
+
+	summary, err := runFeedbackStructured(ids, false)
+	if feedbackJSON {
+		if writeErr := writeJSON(summary); writeErr != nil {
+			return writeErr
+		}
+	} else {
+		renderFeedbackSummary(summary)
+	}
+	if err != nil {
+		return err
+	}
+	if summary.Failed > 0 {
+		return errors.NewWithCodef("runFeedbackByPatterns", errors.ErrValidation, "%d 个技能反馈失败", summary.Failed)
 	}
 	return nil
 }

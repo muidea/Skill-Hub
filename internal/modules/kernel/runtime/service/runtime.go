@@ -96,6 +96,10 @@ func (r *Runtime) FindSkill(skillID string) ([]spec.SkillMetadata, error) {
 	return r.repositorySvc.Service().FindSkill(skillID)
 }
 
+func (r *Runtime) FindSkillsByPatterns(patterns []string, repoFilters []string) ([]spec.SkillMetadata, error) {
+	return r.repositorySvc.Service().FindSkillsByPatterns(patterns, repoFilters)
+}
+
 func (r *Runtime) SearchRemoteSkills(keyword string, limit int) ([]spec.RemoteSearchResult, error) {
 	return r.skillSvc.Service().SearchRemote(keyword, limit)
 }

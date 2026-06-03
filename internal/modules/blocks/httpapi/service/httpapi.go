@@ -53,6 +53,7 @@ func (h *HTTPAPI) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/skill-repository/push-preview", h.handlePushSkillRepositoryPreview)
 	mux.HandleFunc("/api/v1/skill-repository/push", h.handlePushSkillRepository)
 	mux.HandleFunc("/api/v1/search", h.handleSearch)
+	mux.HandleFunc("/api/v1/skills/find", h.handleFindSkills)
 	mux.HandleFunc("/api/v1/skills", h.handleSkills)
 	mux.HandleFunc("/api/v1/skills/", h.handleSkillActions)
 	mux.HandleFunc("/api/v1/projects", h.handleProjects)
@@ -383,6 +384,35 @@ func (h *HTTPAPI) handleSkills(w http.ResponseWriter, r *http.Request) {
 		Data: httpapibiz.SkillListData{
 			Items: skills,
 			Total: len(skills),
+		},
+	})
+}
+
+func (h *HTTPAPI) handleFindSkills(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "方法不支持")
+		return
+	}
+
+	var req httpapibiz.FindSkillsRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_INPUT", "请求体解析失败: "+err.Error())
+		return
+	}
+
+	items, err := h.runtimeSvc.Service().FindSkillsByPatterns(req.Patterns, req.RepoNames)
+	if err != nil {
+		writeWrappedError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, httpapibiz.Response[httpapibiz.FindSkillsData]{
+		Code: httpapibiz.CodeOK,
+		Data: httpapibiz.FindSkillsData{
+			Items: items,
+			Total: len(items),
 		},
 	})
 }

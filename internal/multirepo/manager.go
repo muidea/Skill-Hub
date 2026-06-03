@@ -14,6 +14,7 @@ import (
 	"github.com/muidea/skill-hub/pkg/errors"
 	"github.com/muidea/skill-hub/pkg/skill"
 	"github.com/muidea/skill-hub/pkg/spec"
+	pkgutils "github.com/muidea/skill-hub/pkg/utils"
 )
 
 // Manager 多仓库管理器
@@ -434,6 +435,67 @@ func (m *Manager) ListSkillsInRepositories(repoNames []string) ([]spec.SkillMeta
 	}
 
 	return m.listSkillsForRepositories(selectedRepos), nil
+}
+
+// FindSkillsByPatterns returns the cross-repo set of skills whose ID matches
+// any of the given patterns. Patterns are compiled via
+// pkg/utils.CompileSkillIDPattern, supporting `*`, `?`, `[^...]` classes, and
+// `**` (match all). Matching is performed against each skill's `ID` field so
+// the syntax stays consistent with the historical exact-ID commands
+// (use/status/apply/feedback/validate). A bare `*` is rejected; empty
+// patterns are treated as "match all" inside CompileSkillIDPattern.
+//
+// repoFilters restricts the search to specific repositories; an empty slice
+// searches every enabled repository. The result is deduped by
+// `(ID, Repository)` and sorted for stable output.
+func (m *Manager) FindSkillsByPatterns(patterns []string, repoFilters []string) ([]spec.SkillMetadata, error) {
+	if len(patterns) == 0 {
+		return nil, errors.NewWithCode("FindSkillsByPatterns", errors.ErrInvalidInput, "至少需要一个pattern")
+	}
+
+	matchers := make([]pkgutils.Matcher, 0, len(patterns))
+	for _, p := range patterns {
+		m, err := pkgutils.CompileSkillIDPattern(p)
+		if err != nil {
+			return nil, errors.Wrap(err, "FindSkillsByPatterns")
+		}
+		matchers = append(matchers, m)
+	}
+
+	superset, err := m.ListSkillsInRepositories(repoFilters)
+	if err != nil {
+		return nil, errors.Wrap(err, "FindSkillsByPatterns: 列举技能失败")
+	}
+
+	seen := make(map[string]struct{}, len(superset))
+	matched := make([]spec.SkillMetadata, 0, len(superset))
+	for _, skill := range superset {
+		matchedOne := false
+		for _, matcher := range matchers {
+			if matcher.Match(skill.ID) {
+				matchedOne = true
+				break
+			}
+		}
+		if !matchedOne {
+			continue
+		}
+		key := skill.Repository + "::" + skill.ID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		matched = append(matched, skill)
+	}
+
+	sort.Slice(matched, func(i, j int) bool {
+		if matched[i].Repository == matched[j].Repository {
+			return matched[i].ID < matched[j].ID
+		}
+		return matched[i].Repository < matched[j].Repository
+	})
+
+	return matched, nil
 }
 
 func filterRepositories(repos []config.RepositoryConfig, repoFilter string) []config.RepositoryConfig {

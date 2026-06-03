@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -11,31 +12,27 @@ import (
 	globalservice "github.com/muidea/skill-hub/internal/modules/kernel/global/service"
 	projectapplyservice "github.com/muidea/skill-hub/internal/modules/kernel/project_apply/service"
 	"github.com/muidea/skill-hub/pkg/errors"
+	"github.com/muidea/skill-hub/pkg/spec"
 	"github.com/muidea/skill-hub/pkg/utils"
 )
 
 var applyCmd = &cobra.Command{
-	Use:   "apply [id]",
+	Use:   "apply [pattern...]",
 	Short: "应用技能到项目",
-	Long:  `根据 state.json 中的启用记录，将技能物理分发到当前项目的标准 .agents/skills 目录。`,
-	Args:  cobra.MaximumNArgs(1),
+	Long: `根据 state.json 中的启用记录，将技能物理分发到当前项目的标准 .agents/skills 目录。
+
+无参数时应用所有已启用技能；提供 pattern 时（基于 Go path.Match，匹配技能 ID 字段）
+逐个应用匹配 pattern 的技能，单个失败不影响其它技能的继续处理。`,
+	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		force, _ := cmd.Flags().GetBool("force")
 		global, _ := cmd.Flags().GetBool("global")
 		agents, _ := cmd.Flags().GetStringArray("agent")
 		if global {
-			skillID := ""
-			if len(args) > 0 {
-				skillID = args[0]
-			}
-			return runApplyGlobal(skillID, agents, dryRun, force)
+			return runApplyGlobalByPatterns(args, agents, dryRun, force)
 		}
-		skillID := ""
-		if len(args) > 0 {
-			skillID = args[0]
-		}
-		return runApply(skillID, dryRun, force)
+		return runApplyByPatterns(args, dryRun, force)
 	},
 }
 
@@ -129,6 +126,58 @@ func runApplyViaService(client serviceApplyClient, skillID string, dryRun bool, 
 	return nil
 }
 
+// runApplyByPatterns dispatches based on arg shape: no args or single
+// non-wildcard arg reuses the existing single-skill path; otherwise patterns
+// are resolved and each match is applied individually with continue+summary.
+func runApplyByPatterns(args []string, dryRun bool, force bool) error {
+	if len(args) == 0 {
+		return runApply("", dryRun, force)
+	}
+	if len(args) == 1 && !hasWildcard(args[0]) {
+		return runApply(args[0], dryRun, force)
+	}
+	return runApplyWithPatterns(args, dryRun, force)
+}
+
+func runApplyWithPatterns(patterns []string, dryRun bool, force bool) error {
+	if _, err := compilePatterns(patterns); err != nil {
+		return err
+	}
+	allMatches, err := resolveSkillsByPatterns(patterns)
+	if err != nil {
+		return err
+	}
+	if len(allMatches) == 0 {
+		return nil
+	}
+
+	// Dedupe by ID.
+	seen := make(map[string]struct{}, len(allMatches))
+	skills := make([]spec.SkillMetadata, 0, len(allMatches))
+	for _, s := range allMatches {
+		if _, ok := seen[s.ID]; ok {
+			continue
+		}
+		seen[s.ID] = struct{}{}
+		skills = append(skills, s)
+	}
+
+	var failed []string
+	for _, s := range skills {
+		if err := runApply(s.ID, dryRun, force); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ 应用技能 '%s' 失败: %v\n", s.ID, err)
+			failed = append(failed, s.ID)
+			continue
+		}
+	}
+	if len(failed) > 0 {
+		fmt.Fprintf(os.Stderr, "\n=== 批量应用摘要 ===\n成功: %d, 失败: %d\n失败列表: %s\n",
+			len(skills)-len(failed), len(failed), strings.Join(failed, ", "))
+		return errors.NewWithCodef("runApplyWithPatterns", errors.ErrSystem, "批量应用存在失败: %d", len(failed))
+	}
+	return nil
+}
+
 func renderApplyResult(result *projectapplyservice.ApplyResult) {
 	fmt.Println("正在应用技能到项目...")
 	if result == nil {
@@ -170,6 +219,43 @@ func renderApplyResult(result *projectapplyservice.ApplyResult) {
 	} else {
 		fmt.Println("\n✅ 所有技能应用完成")
 	}
+}
+
+// runApplyGlobalByPatterns mirrors runApplyByPatterns for the --global path.
+func runApplyGlobalByPatterns(args []string, agents []string, dryRun bool, force bool) error {
+	if len(args) == 0 {
+		return runApplyGlobal("", agents, dryRun, force)
+	}
+	if len(args) == 1 && !hasWildcard(args[0]) {
+		return runApplyGlobal(args[0], agents, dryRun, force)
+	}
+	// For global apply, resolve patterns to skill IDs and call per-ID. The
+	// global apply service accepts a SkillID filter; an empty SkillID applies
+	// all enabled global skills, which is not what we want for a pattern.
+	allMatches, err := resolveSkillsByPatterns(args)
+	if err != nil {
+		return err
+	}
+	if len(allMatches) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(allMatches))
+	var failed []string
+	for _, s := range allMatches {
+		if _, ok := seen[s.ID]; ok {
+			continue
+		}
+		seen[s.ID] = struct{}{}
+		if err := runApplyGlobal(s.ID, agents, dryRun, force); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ 全局应用技能 '%s' 失败: %v\n", s.ID, err)
+			failed = append(failed, s.ID)
+		}
+	}
+	if len(failed) > 0 {
+		fmt.Fprintf(os.Stderr, "\n=== 全局批量应用摘要 ===\n失败列表: %s\n", strings.Join(failed, ", "))
+		return errors.NewWithCodef("runApplyGlobalByPatterns", errors.ErrSystem, "批量全局应用存在失败: %d", len(failed))
+	}
+	return nil
 }
 
 func renderGlobalApplyResult(result *globalservice.ApplyResult) {

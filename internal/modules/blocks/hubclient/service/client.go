@@ -185,6 +185,20 @@ func (c *Client) FindSkillCandidates(ctx context.Context, skillID string) ([]spe
 	return data.Items, nil
 }
 
+// FindSkillsByPatterns resolves skills across repositories whose ID matches
+// any of the given patterns. Pattern syntax: `*` (multi-char), `?` (one char),
+// `**` (match all); lone `*` is rejected by the server.
+func (c *Client) FindSkillsByPatterns(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error) {
+	data, err := post[httpapibiz.FindSkillsData](ctx, c, "/api/v1/skills/find", httpapibiz.FindSkillsRequest{
+		Patterns:  patterns,
+		RepoNames: repoNames,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return data.Items, nil
+}
+
 func (c *Client) GetSkillDetail(ctx context.Context, skillID, repoName string) (*spec.Skill, error) {
 	query := url.Values{}
 	query.Set("repo", repoName)

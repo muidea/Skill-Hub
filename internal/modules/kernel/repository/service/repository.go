@@ -50,6 +50,16 @@ func (r *Repository) FindSkill(skillID string) ([]spec.SkillMetadata, error) {
 	return manager.FindSkill(skillID)
 }
 
+// FindSkillsByPatterns delegates to multirepo.Manager.FindSkillsByPatterns.
+// See multirepo.Manager.FindSkillsByPatterns for the matching semantics.
+func (r *Repository) FindSkillsByPatterns(patterns []string, repoFilters []string) ([]spec.SkillMetadata, error) {
+	manager, err := r.Manager()
+	if err != nil {
+		return nil, err
+	}
+	return manager.FindSkillsByPatterns(patterns, repoFilters)
+}
+
 func (r *Repository) LoadSkill(skillID, repoName string) (*spec.Skill, error) {
 	manager, err := r.Manager()
 	if err != nil {

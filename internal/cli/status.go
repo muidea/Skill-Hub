@@ -13,32 +13,42 @@ import (
 
 	globalservice "github.com/muidea/skill-hub/internal/modules/kernel/global/service"
 	projectstatusservice "github.com/muidea/skill-hub/internal/modules/kernel/project_status/service"
+	"github.com/muidea/skill-hub/pkg/errors"
 	"github.com/muidea/skill-hub/pkg/skill"
 	"github.com/muidea/skill-hub/pkg/spec"
 	"github.com/muidea/skill-hub/pkg/utils"
 )
 
 var statusCmd = &cobra.Command{
-	Use:   "status [id]",
+	Use:   "status [pattern...]",
 	Short: "检查技能状态",
 	Long: `对比项目本地工作区文件与技能仓库源文件的差异，显示技能状态：
 - Synced: 本地与仓库一致
 - Modified: 本地有未反馈的修改
 - Outdated: 仓库版本领先于本地
-- Missing: 技能已启用但本地文件缺失`,
+- Missing: 技能已启用但本地文件缺失
+
+无参数时检查所有已启用技能；提供 pattern 时（基于 Go path.Match，
+匹配技能 ID 字段）只显示 ID 匹配 pattern 的技能。`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		skillID := ""
-		if len(args) > 0 {
-			skillID = args[0]
-		}
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		jsonOutput, _ := cmd.Flags().GetBool("json")
 		global, _ := cmd.Flags().GetBool("global")
 		agents, _ := cmd.Flags().GetStringArray("agent")
 		if global {
-			return runStatusGlobal(skillID, agents, jsonOutput)
+			return runStatusGlobalDispatch(args, agents, jsonOutput)
 		}
-		return runStatus(skillID, verbose, jsonOutput)
+		// No args: existing behavior — show all enabled skills.
+		if len(args) == 0 {
+			return runStatus("", verbose, jsonOutput)
+		}
+		// Single literal arg without wildcards: existing exact-ID behavior for
+		// backward compatibility. (e.g. `status magic-team/some-id`).
+		if len(args) == 1 && !hasWildcard(args[0]) {
+			return runStatus(args[0], verbose, jsonOutput)
+		}
+		// Wildcard patterns: resolve by ID, then filter the Inspect summary.
+		return runStatusByPatterns(args, verbose, jsonOutput)
 	},
 }
 
@@ -47,6 +57,21 @@ func init() {
 	statusCmd.Flags().Bool("json", false, "以JSON格式输出状态，便于CI和自动化脚本处理")
 	statusCmd.Flags().Bool("global", false, "检查本机全局技能状态")
 	statusCmd.Flags().StringArray("agent", nil, "限制检查的 agent，可重复使用: codex, opencode, claude")
+}
+
+func runStatusGlobalDispatch(args []string, agents []string, jsonOutput bool) error {
+	// No positional arg: existing behavior — show all globally-enabled skills.
+	if len(args) == 0 {
+		return runStatusGlobal("", agents, jsonOutput)
+	}
+	// Single literal arg without wildcards: pass through as exact ID filter so
+	// `status <id> --global --agent <agent>` keeps returning SKILL_NOT_FOUND
+	// when the skill is not enabled for that agent.
+	if len(args) == 1 && !hasWildcard(args[0]) {
+		return runStatusGlobal(args[0], agents, jsonOutput)
+	}
+	// Wildcard patterns: resolve by ID, then filter the global Inspect summary.
+	return runStatusGlobalByPatterns(args, agents, jsonOutput)
 }
 
 func runStatusGlobal(skillID string, agents []string, jsonOutput bool) error {
@@ -147,6 +172,164 @@ func writeJSON(v interface{}) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(v)
+}
+
+// hasWildcard reports whether s contains a glob metacharacter.
+func hasWildcard(s string) bool {
+	return strings.ContainsAny(s, "*?[")
+}
+
+// runStatusByPatterns resolves the given patterns and renders the status of
+// the project's enabled skills whose IDs are in the resolved set. An empty
+// match set renders "no matches found" (silent, mirroring `use` semantics).
+func runStatusByPatterns(patterns []string, verbose bool, jsonOutput bool) error {
+	if _, err := compilePatterns(patterns); err != nil {
+		return err
+	}
+
+	allMatches, err := resolveSkillsByPatterns(patterns)
+	if err != nil {
+		return err
+	}
+
+	matchedIDs := make(map[string]struct{}, len(allMatches))
+	for _, s := range allMatches {
+		matchedIDs[s.ID] = struct{}{}
+	}
+
+	if client, ok := hubClientIfAvailable(); ok {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return utils.GetCwdErr(err)
+		}
+		data, err := client.GetProjectStatus(context.Background(), cwd, "")
+		if err != nil {
+			return errors.Wrap(err, "通过服务获取项目状态失败")
+		}
+		if data.Item == nil {
+			return nil
+		}
+		filtered := filterStatusSummaryByIDs(data.Item, matchedIDs)
+		if jsonOutput {
+			return writeJSON(filtered)
+		}
+		renderProjectStatusSummary(filtered)
+		return nil
+	}
+
+	ctx, err := RequireInitAndWorkspace("")
+	if err != nil {
+		return err
+	}
+	summary, err := projectstatusservice.New().Inspect(ctx.Cwd, "")
+	if err != nil {
+		return err
+	}
+	filtered := filterStatusSummaryByIDs(summary, matchedIDs)
+	if jsonOutput {
+		return writeJSON(filtered)
+	}
+	renderProjectStatusSummary(filtered)
+	if verbose {
+		fmt.Println("\n=== 详细差异信息 ===")
+		for _, item := range filtered.Items {
+			showSkillDiff(item)
+		}
+	}
+	return nil
+}
+
+func filterStatusSummaryByIDs(summary *projectstatusservice.ProjectStatusSummary, ids map[string]struct{}) *projectstatusservice.ProjectStatusSummary {
+	if summary == nil {
+		return nil
+	}
+	out := &projectstatusservice.ProjectStatusSummary{
+		ProjectPath: summary.ProjectPath,
+		SkillCount:  0,
+	}
+	for _, item := range summary.Items {
+		if _, ok := ids[item.SkillID]; !ok {
+			continue
+		}
+		out.Items = append(out.Items, item)
+	}
+	out.SkillCount = len(out.Items)
+	return out
+}
+
+// runStatusGlobalByPatterns resolves patterns via the cross-repo skill set,
+// then renders the global status of the skills whose IDs are in the
+// resolved set. An empty match set renders an "empty" summary silently.
+func runStatusGlobalByPatterns(patterns []string, agents []string, jsonOutput bool) error {
+	if _, err := compilePatterns(patterns); err != nil {
+		return err
+	}
+
+	allMatches, err := resolveSkillsByPatterns(patterns)
+	if err != nil {
+		return err
+	}
+	matchedIDs := make(map[string]struct{}, len(allMatches))
+	for _, s := range allMatches {
+		matchedIDs[s.ID] = struct{}{}
+	}
+
+	if client, ok := hubClientIfAvailable(); ok {
+		// Inspect with empty skillID pulls the full global summary; we then
+		// filter the per-skill items down to the pattern-resolved set. The
+		// per-skill-per-agent SKILL_NOT_FOUND guard is intentionally relaxed
+		// for the pattern case — by design the user is asking for "all
+		// matching skills" rather than a single skill.
+		data, err := client.GetGlobalStatus(context.Background(), "", agents)
+		if err != nil {
+			return errors.Wrap(err, "通过服务获取全局状态失败")
+		}
+		if data.Item == nil {
+			return nil
+		}
+		filtered := filterGlobalStatusSummaryByIDs(data.Item, matchedIDs)
+		if jsonOutput {
+			return writeJSON(filtered)
+		}
+		renderGlobalStatusSummary(filtered)
+		return nil
+	}
+
+	if err := CheckInitDependency(); err != nil {
+		return err
+	}
+	summary, err := globalservice.New().Inspect("", agents)
+	if err != nil {
+		return err
+	}
+	filtered := filterGlobalStatusSummaryByIDs(summary, matchedIDs)
+	if jsonOutput {
+		return writeJSON(filtered)
+	}
+	renderGlobalStatusSummary(filtered)
+	return nil
+}
+
+func filterGlobalStatusSummaryByIDs(summary *globalservice.StatusSummary, ids map[string]struct{}) *globalservice.StatusSummary {
+	if summary == nil {
+		return nil
+	}
+	out := &globalservice.StatusSummary{
+		Scope:       summary.Scope,
+		GlobalPath:  summary.GlobalPath,
+		Agents:      summary.Agents,
+		Items:       []globalservice.StatusItem{},
+		Orphaned:    summary.Orphaned,
+		GeneratedAt: summary.GeneratedAt,
+	}
+	for _, item := range summary.Items {
+		if _, ok := ids[item.SkillID]; !ok {
+			continue
+		}
+		out.Items = append(out.Items, item)
+	}
+	out.SkillCount = len(out.Items)
+	return out
 }
 
 func renderProjectStatusSummary(summary *projectstatusservice.ProjectStatusSummary) {

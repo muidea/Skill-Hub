@@ -29,6 +29,7 @@ type serviceBridgeClient interface {
 	PushSkillRepositoryPreview(ctx context.Context) (*httpapibiz.PushSkillRepositoryPreviewData, error)
 	PushSkillRepositoryChanges(ctx context.Context, req httpapibiz.PushSkillRepositoryRequest) (*httpapibiz.PushSkillRepositoryData, error)
 	ListSkills(ctx context.Context, repoNames []string) ([]spec.SkillMetadata, error)
+	FindSkillsByPatterns(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error)
 	SearchRemoteSkills(ctx context.Context, keyword string, limit int) ([]spec.RemoteSearchResult, error)
 	GetProjectStatus(ctx context.Context, projectPath, skillID string) (*httpapibiz.ProjectStatusData, error)
 	FindSkillCandidates(ctx context.Context, skillID string) ([]spec.SkillMetadata, error)
@@ -108,6 +109,10 @@ func (h *hubBridgeClient) PushSkillRepositoryChanges(ctx context.Context, req ht
 
 func (h *hubBridgeClient) ListSkills(ctx context.Context, repoNames []string) ([]spec.SkillMetadata, error) {
 	return h.client.Service().ListSkills(ctx, repoNames)
+}
+
+func (h *hubBridgeClient) FindSkillsByPatterns(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error) {
+	return h.client.Service().FindSkillsByPatterns(ctx, patterns, repoNames)
 }
 
 func (h *hubBridgeClient) SearchRemoteSkills(ctx context.Context, keyword string, limit int) ([]spec.RemoteSearchResult, error) {

@@ -16,19 +16,28 @@ import (
 )
 
 var validateCmd = &cobra.Command{
-	Use:   "validate [id]",
+	Use:   "validate [pattern...]",
 	Short: "验证本地新建技能的合规性",
 	Long: `验证指定技能在项目本地工作区中的文件是否合规，主要用于 create 之后、feedback 之前的本地校验。
 
 该命令检查项目工作区中的技能目录和 SKILL.md 内容，包括 YAML 语法、必需字段和基本文件结构。
 使用 --links 可额外检查 SKILL.md 与技能目录内 Markdown 文件中的本地链接。
-使用 --fix 可为缺失或不完整的 legacy SKILL.md 安全补齐 frontmatter，并在修改前创建备份。`,
+使用 --fix 可为缺失或不完整的 legacy SKILL.md 安全补齐 frontmatter，并在修改前创建备份。
+
+Pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
+  *        匹配零或多个任意字符
+  ?        匹配恰好一个任意字符
+  **       匹配全部
+单字面量参数仍按精确 ID 处理；多参数或含通配符时按 pattern 批量解析，逐个技能执行验证并汇总。`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		all, _ := cmd.Flags().GetBool("all")
 		if all {
 			return cobra.NoArgs(cmd, args)
 		}
-		return cobra.ExactArgs(1)(cmd, args)
+		if len(args) < 1 {
+			return cobra.ExactArgs(1)(cmd, args)
+		}
+		return nil
 	},
 	ValidArgsFunction: completeEnabledSkillIDsForCwd,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -43,7 +52,10 @@ var validateCmd = &cobra.Command{
 		if opts.All {
 			return runValidateAllWithOptions(opts)
 		}
-		return runValidateWithOptions(args[0], opts)
+		if len(args) == 1 && !hasWildcard(args[0]) {
+			return runValidateWithOptions(args[0], opts)
+		}
+		return runValidateByPatterns(args, opts)
 	},
 }
 
@@ -88,45 +100,10 @@ func runValidateAllWithOptions(opts validateCLIOptions) error {
 }
 
 func runValidateRequest(opts projectlifecycleservice.ValidateOptions, jsonOutput bool) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return utils.GetCwdErr(err)
-	}
-	opts.ProjectPath = cwd
-	if opts.ProjectRoot != "" {
-		absProjectRoot, err := filepath.Abs(opts.ProjectRoot)
-		if err != nil {
-			return errors.Wrap(err, "解析project-root失败")
-		}
-		opts.ProjectRoot = absProjectRoot
-	}
-
-	var report *projectlifecycleservice.ValidateReport
-	if client, ok := hubClientIfAvailable(); ok {
-		data, serviceErr := client.ValidateProjectSkills(context.Background(), httpapibiz.ValidateProjectSkillsRequest{Options: opts})
-		if serviceErr != nil {
-			return errors.Wrap(serviceErr, "通过服务验证技能失败")
-		}
-		report = data.Item
-	} else {
-		if err := CheckInitDependency(); err != nil {
-			return err
-		}
-		ctx, err := RequireInitAndWorkspace(cwd)
-		if err != nil {
-			return err
-		}
-		opts.ProjectPath = ctx.Cwd
-		lifecycleSvc := projectlifecycleservice.New()
-		report, err = lifecycleSvc.ValidateProjectSkills(opts)
-		if err != nil && report == nil {
-			return err
-		}
-	}
-
+	report, err := runValidateSilent(opts)
 	if jsonOutput {
-		if err := writeJSON(report); err != nil {
-			return err
+		if writeErr := writeJSON(report); writeErr != nil {
+			return writeErr
 		}
 	} else {
 		renderValidateReport(report)
@@ -135,6 +112,122 @@ func runValidateRequest(opts projectlifecycleservice.ValidateOptions, jsonOutput
 		return errors.NewWithCodef("runValidate", errors.ErrValidation, "%d 个技能验证失败", report.Failed)
 	}
 	return err
+}
+
+// runValidateSilent runs a single validation pass and returns the report
+// without rendering it. Used both by runValidateRequest and the pattern
+// batch path, which aggregates reports from many skill IDs and renders once.
+func runValidateSilent(opts projectlifecycleservice.ValidateOptions) (*projectlifecycleservice.ValidateReport, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, utils.GetCwdErr(err)
+	}
+	opts.ProjectPath = cwd
+	if opts.ProjectRoot != "" {
+		absProjectRoot, err := filepath.Abs(opts.ProjectRoot)
+		if err != nil {
+			return nil, errors.Wrap(err, "解析project-root失败")
+		}
+		opts.ProjectRoot = absProjectRoot
+	}
+
+	var report *projectlifecycleservice.ValidateReport
+	if client, ok := hubClientIfAvailable(); ok {
+		data, serviceErr := client.ValidateProjectSkills(context.Background(), httpapibiz.ValidateProjectSkillsRequest{Options: opts})
+		if serviceErr != nil {
+			return nil, errors.Wrap(serviceErr, "通过服务验证技能失败")
+		}
+		report = data.Item
+	} else {
+		if err := CheckInitDependency(); err != nil {
+			return nil, err
+		}
+		ctx, err := RequireInitAndWorkspace(cwd)
+		if err != nil {
+			return nil, err
+		}
+		opts.ProjectPath = ctx.Cwd
+		lifecycleSvc := projectlifecycleservice.New()
+		report, err = lifecycleSvc.ValidateProjectSkills(opts)
+		if err != nil && report == nil {
+			return nil, err
+		}
+	}
+	return report, nil
+}
+
+// runValidateByPatterns resolves the patterns against the cross-repo skill
+// set and runs the silent validation path for each matched ID, then renders
+// a single aggregate report. Failures on individual skills are not fatal;
+// the report surfaces them.
+func runValidateByPatterns(patterns []string, opts validateCLIOptions) error {
+	if _, err := compilePatterns(patterns); err != nil {
+		return err
+	}
+	allMatches, err := resolveSkillsByPatterns(patterns)
+	if err != nil {
+		return err
+	}
+	if len(allMatches) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(allMatches))
+	ids := make([]string, 0, len(allMatches))
+	for _, s := range allMatches {
+		if _, ok := seen[s.ID]; ok {
+			continue
+		}
+		seen[s.ID] = struct{}{}
+		ids = append(ids, s.ID)
+	}
+
+	aggregate := &projectlifecycleservice.ValidateReport{
+		SkillID:     strings.Join(patterns, ","),
+		Fix:         opts.Fix,
+		Links:       opts.Links,
+		CheckRemote: opts.CheckRemote,
+		ProjectRoot: opts.ProjectRoot,
+	}
+	var firstErr error
+	for _, id := range ids {
+		silentOpts := projectlifecycleservice.ValidateOptions{
+			SkillID:     id,
+			Fix:         opts.Fix,
+			Links:       opts.Links,
+			CheckRemote: opts.CheckRemote,
+			ProjectRoot: opts.ProjectRoot,
+		}
+		report, rErr := runValidateSilent(silentOpts)
+		if rErr != nil && firstErr == nil {
+			firstErr = rErr
+		}
+		if report == nil {
+			continue
+		}
+		if aggregate.ProjectPath == "" {
+			aggregate.ProjectPath = report.ProjectPath
+		}
+		aggregate.Total += report.Total
+		aggregate.Passed += report.Passed
+		aggregate.Failed += report.Failed
+		aggregate.Repaired += report.Repaired
+		aggregate.LinkIssueCount += report.LinkIssueCount
+		aggregate.Items = append(aggregate.Items, report.Items...)
+		aggregate.LinkIssues = append(aggregate.LinkIssues, report.LinkIssues...)
+		aggregate.Failures = append(aggregate.Failures, report.Failures...)
+	}
+
+	if opts.JSON {
+		if writeErr := writeJSON(aggregate); writeErr != nil {
+			return writeErr
+		}
+	} else {
+		renderValidateReport(aggregate)
+	}
+	if aggregate.Failed > 0 {
+		return errors.NewWithCodef("runValidateByPatterns", errors.ErrValidation, "%d 个技能验证失败", aggregate.Failed)
+	}
+	return firstErr
 }
 
 func renderValidateReport(report *projectlifecycleservice.ValidateReport) {

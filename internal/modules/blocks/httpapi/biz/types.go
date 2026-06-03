@@ -96,6 +96,16 @@ type SkillCandidateListData struct {
 	Items []spec.SkillMetadata `json:"items"`
 }
 
+type FindSkillsRequest struct {
+	RepoNames []string `json:"repo_names,omitempty"`
+	Patterns  []string `json:"patterns,omitempty"`
+}
+
+type FindSkillsData struct {
+	Items []spec.SkillMetadata `json:"items"`
+	Total int                  `json:"total"`
+}
+
 type SkillDetailData struct {
 	Item *spec.Skill `json:"item"`
 }

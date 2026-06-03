@@ -27,7 +27,7 @@ func TestRunListViaServiceWithoutLocalConfig(t *testing.T) {
 	defer reset()
 
 	output := captureStdout(t, func() {
-		if err := runList(false, nil); err != nil {
+		if err := runList(false, nil, nil); err != nil {
 			t.Fatalf("runList returned error: %v", err)
 		}
 	})
@@ -320,8 +320,8 @@ func TestRunUseViaServiceWithoutLocalConfig(t *testing.T) {
 
 	output := withWorkingDir(t, projectDir, func() string {
 		return captureStdout(t, func() {
-			if err := runUse("demo-skill"); err != nil {
-				t.Fatalf("runUse returned error: %v", err)
+			if err := runUseByID("demo-skill", nil, false); err != nil {
+				t.Fatalf("runUseByID returned error: %v", err)
 			}
 		})
 	})
@@ -733,6 +733,7 @@ type fakeServiceBridgeClient struct {
 	pushPreviewFn           func(context.Context) (*httpapibiz.PushSkillRepositoryPreviewData, error)
 	pushSkillRepositoryFn   func(context.Context, httpapibiz.PushSkillRepositoryRequest) (*httpapibiz.PushSkillRepositoryData, error)
 	listSkillsFn            func(context.Context, []string) ([]spec.SkillMetadata, error)
+	findSkillsByPatternsFn  func(context.Context, []string, []string) ([]spec.SkillMetadata, error)
 	searchRemoteSkillsFn    func(context.Context, string, int) ([]spec.RemoteSearchResult, error)
 	getProjectStatusFn      func(context.Context, string, string) (*httpapibiz.ProjectStatusData, error)
 	findSkillCandidatesFn   func(context.Context, string) ([]spec.SkillMetadata, error)
@@ -848,6 +849,12 @@ func (f *fakeServiceBridgeClient) GetProjectStatus(ctx context.Context, projectP
 func (f *fakeServiceBridgeClient) FindSkillCandidates(ctx context.Context, skillID string) ([]spec.SkillMetadata, error) {
 	if f.findSkillCandidatesFn != nil {
 		return f.findSkillCandidatesFn(ctx, skillID)
+	}
+	return nil, nil
+}
+func (f *fakeServiceBridgeClient) FindSkillsByPatterns(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error) {
+	if f.findSkillsByPatternsFn != nil {
+		return f.findSkillsByPatternsFn(ctx, patterns, repoNames)
 	}
 	return nil, nil
 }
