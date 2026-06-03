@@ -252,7 +252,11 @@ func (sr *SkillRepository) resolveRemoteSkillUpdatesByVersion() error {
 }
 
 func (sr *SkillRepository) popStashedChangesAllowConflicts() error {
-	output, err := exec.Command("git", "-C", sr.repo.GetPath(), "stash", "pop").CombinedOutput()
+	cmd := exec.Command("git", "-C", sr.repo.GetPath(), "stash", "pop")
+	// Force C locale so conflict markers ("CONFLICT") match regardless of
+	// the host's LANG/LC_ALL.
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	output, err := cmd.CombinedOutput()
 	if len(output) > 0 {
 		fmt.Print(string(output))
 	}

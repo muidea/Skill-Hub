@@ -261,6 +261,10 @@ func (r *Repository) MergeRemoteMainAllowConflicts() error {
 	}
 
 	cmd := exec.Command("git", "-C", r.path, "merge", "--no-edit", r.remoteName+"/main")
+	// Force C locale so conflict markers ("CONFLICT") match regardless of
+	// the host's LANG/LC_ALL. Without this, zh_CN hosts see "冲突" and
+	// the version-based resolver downstream never fires.
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	output, err := cmd.CombinedOutput()
 	if len(output) > 0 {
 		fmt.Print(string(output))
