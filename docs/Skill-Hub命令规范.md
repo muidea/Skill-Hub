@@ -60,7 +60,7 @@ ${OPENCODE_HOME:-$HOME/.config/opencode}/skills
 ### 3.2. 技能发现
 | 命令 | 功能描述 | 语法 |
 |------|----------|------|
-| `list` | 列出可用技能 | `skill-hub list [pattern...] [--verbose] [--repo <name>...]` |
+| `list` | 列出可用技能 | `skill-hub list [--pattern <glob>...] [--verbose] [--repo <name>...]` |
 | `search` | 搜索远程技能 | `skill-hub search <keyword> [--limit <number>]` |
 
 ### 3.3. 技能创建/移除/验证/使用
@@ -74,24 +74,24 @@ ${OPENCODE_HOME:-$HOME/.config/opencode}/skills
 | `lint` | 审计项目技能内容 | `skill-hub lint [scope] --paths [--project-root <dir>] [--fix] [--dry-run] [--no-backup] [--json]` |
 | `audit` | 生成技能刷新审计报告 | `skill-hub audit [scope] [--output <file>] [--format markdown|json] [--canonical <dir>] [--project-root <dir>]` |
 | `remove` | 移除项目技能 | `skill-hub remove <id>` |
-| `validate` | 验证技能合规性 | `skill-hub validate [pattern...] [--fix] [--links] [--json]` 或 `skill-hub validate --all [--fix] [--links] [--json]` |
-| `use` | 使用本地仓库里的指定技能 | `skill-hub use <pattern> [pattern...] [--global [--agent <name>...]]` |
+| `validate` | 验证技能合规性 | `skill-hub validate --all [--fix] [--links] [--json]` 或 `skill-hub validate --pattern <glob>... [--fix] [--links] [--json]` |
+| `use` | 使用本地仓库里的指定技能 | `skill-hub use --pattern <glob>... [--global [--agent <name>...]]` |
 
-补充：`use` / `remove` 支持 `--global [--agent codex|opencode|claude]`，用于本机全局 agent skills 目录；`list` 仍只表示本地仓库中的可用 skill 清单，不存在项目或全局 scope。`use` / `validate` / `apply` / `feedback` / `status` / `list` 支持基于 `ID` 字段的 glob pattern（详见 §6）。
+补充：`use` / `remove` 支持 `--global [--agent codex|opencode|claude]`，用于本机全局 agent skills 目录；`list` 仍只表示本地仓库中的可用 skill 清单，不存在项目或全局 scope。`use` / `validate` / `apply` / `feedback` / `status` / `list` 支持通过 `--pattern` 标志传入基于 `ID` 字段的 glob pattern（详见 §6）。位置参数形式 `list magic*` / `use foo*` / `apply magic*` 等已废弃，使用位置参数会被拒绝并提示改用 `--pattern`。
 
 
 ### 3.4. 技能状态
 | 命令 | 功能描述 | 语法 |
 |------|----------|------|
-| `status` | 检查技能状态 | `skill-hub status [pattern...] [--verbose] [--json]` |
+| `status` | 检查技能状态 | `skill-hub status [--pattern <glob>...] [--verbose] [--json]` |
 
 补充：`status --global [--agent codex|opencode|claude] [--json]` 会检查全局期望状态与当前机器实际 agent skills 目录是否一致。
 
 ### 3.5. 项目工作区-本地仓库交互
 | 命令 | 功能描述 | 语法 |
 |------|----------|------|
-| `apply` | 应用技能到项目 | `skill-hub apply [pattern...] [--dry-run] [--force]` |
-| `feedback` | 将项目工作区技能修改内容更新至到本地仓库 | `skill-hub feedback [pattern...] [--dry-run] [--force] [--json]` 或 `skill-hub feedback --all [--dry-run] [--force] [--json]` |
+| `apply` | 应用技能到项目 | `skill-hub apply [--pattern <glob>...] [--dry-run] [--force]` |
+| `feedback` | 将项目工作区技能修改内容更新至到本地仓库 | `skill-hub feedback --all [--dry-run] [--force] [--json]` 或 `skill-hub feedback --pattern <glob>... [--dry-run] [--force] [--json]` |
 
 补充：`apply [id] --global [--agent codex|opencode|claude] [--dry-run] [--force]` 会按 `global-state.json` 刷新本机 agent 全局 skills 目录。默认不覆盖没有 `.skill-hub-manifest.json` 的同名目录；`--force` 会先创建备份再覆盖。
 
@@ -218,12 +218,10 @@ skill-hub init https://github.com/example/skills-repo.git
 
 ### 4.3 list - 列出可用技能
 
-**语法**: `skill-hub list [pattern...] [--verbose] [--repo <repo-name>...]`
-
-**参数**:
-- `pattern` (可选，可重复): 基于 Go `path.Match` 的 glob，匹配技能 ID 字段。详见 §6。
+**语法**: `skill-hub list [--pattern <glob>...] [--verbose] [--repo <repo-name>...]`
 
 **选项**:
+- `--pattern <glob>`: 基于 Go `path.Match` 的 glob，匹配技能 ID 字段。可重复使用以匹配多个 pattern。详见 §6。
 - `--verbose`: 显示详细信息，包括技能描述、版本、适用说明等。
 - `--repo <repo-name>`: 按仓库名称过滤技能列表（可多次使用指定多个仓库）。
 
@@ -258,8 +256,10 @@ skill-hub list --repo skills-repo --repo openclaw
 skill-hub list --repo skills-repo --verbose
 
 # 按 ID pattern 过滤
-skill-hub list 'magic*'
-skill-hub list '**'
+skill-hub list --pattern 'magic*'
+skill-hub list --pattern '**'
+# 多个 --pattern 取并集
+skill-hub list --pattern 'magic*' --pattern 'git-*'
 ```
 
 ### 4.4 search - 搜索远程技能
@@ -511,13 +511,11 @@ skill-hub remove git-expert --global --agent codex
 ### 4.7 validate - 验证技能合规性
 
 **语法**:
-- `skill-hub validate <id> [--fix] [--links] [--project-root <dir>] [--check-remote] [--json]`
-- `skill-hub validate <pattern>... [--fix] [--links] [--project-root <dir>] [--check-remote] [--json]`
+- `skill-hub validate --pattern <id-or-glob>... [--fix] [--links] [--project-root <dir>] [--check-remote] [--json]`
 - `skill-hub validate --all [--fix] [--links] [--project-root <dir>] [--check-remote] [--json]`
 
 **参数**:
-- `id` (必需，单字面量): 要验证的技能标识符。
-- `pattern` (可选，可重复): 基于 Go `path.Match` 的 glob，匹配技能 ID 字段。详见 §6。
+- `--pattern` (必需，可重复): 单字面量无通配符按精确 ID 处理；含通配符或多个值时按 `ID` 字段做 glob 匹配。基于 Go `path.Match`，详见 §6。
 
 **选项**:
 - `--fix`: 修复缺失或不完整的 `SKILL.md` frontmatter，并在修改前创建 `SKILL.md.bak.<timestamp>`。
@@ -558,15 +556,15 @@ skill-hub validate --all
 skill-hub validate --all --links --json
 
 # 按 ID pattern 验证一组技能
-skill-hub validate 'magic*' --links
+skill-hub validate --pattern 'magic*' --links
 ```
 
 ### 4.8 use - 使用技能
 
-**语法**: `skill-hub use <pattern> [pattern...] [--global] [--agent codex|opencode|claude]`
+**语法**: `skill-hub use --pattern <id-or-glob>... [--global] [--agent codex|opencode|claude]`
 
 **参数**:
-- `pattern` (必需，可重复): 单字面量参数按精确 ID 匹配；含通配符或多个参数时按 `ID` 字段做 glob 匹配。详见 §6。命中 0 个技能时静默通过。
+- `--pattern` (必需，可重复): 单字面量无通配符按精确 ID 处理；含通配符或多个值时按 `ID` 字段做 glob 匹配。基于 Go `path.Match`，详见 §6。命中 0 个技能时静默通过。
 
 **功能描述**:
 
@@ -598,15 +596,15 @@ skill-hub use git-expert
 skill-hub use git-expert --global --agent codex
 
 # 按 ID pattern 一次性启用一组技能
-skill-hub use 'magic*'
+skill-hub use --pattern 'magic*'
 ```
 
 ### 4.9 status - 检查技能状态
 
-**语法**: `skill-hub status [pattern...] [--verbose] [--json] [--global] [--agent codex|opencode|claude]`
+**语法**: `skill-hub status [--pattern <id-or-glob>...] [--verbose] [--json] [--global] [--agent codex|opencode|claude]`
 
 **参数**:
-- `pattern` (可选，可重复): 不传或传 `**` 时检查全部；单字面量无通配符时按精确 ID 检查（向后兼容）；含通配符或多个参数时按 `ID` 字段做 glob 匹配。详见 §6。
+- `--pattern` (可选，可重复): 不传或传 `**` 时检查全部；单字面量无通配符时按精确 ID 检查（向后兼容）；含通配符或多个值时按 `ID` 字段做 glob 匹配。基于 Go `path.Match`，详见 §6。
 
 **选项**:
 - `--verbose`: 显示详细差异信息。
@@ -647,7 +645,7 @@ skill-hub use 'magic*'
 skill-hub status
 
 # 检查特定技能状态
-skill-hub status git-expert
+skill-hub status --pattern git-expert
 
 # 显示详细差异
 skill-hub status --verbose
@@ -657,15 +655,15 @@ skill-hub status --json
 
 # 检查本机全局技能一致性
 skill-hub status --global
-skill-hub status git-expert --global --agent codex
+skill-hub status --pattern git-expert --global --agent codex
 ```
 
 ### 4.10 apply - 应用技能到项目工作区
 
-**语法**: `skill-hub apply [pattern...] [--dry-run] [--force] [--global] [--agent codex|opencode|claude]`
+**语法**: `skill-hub apply [--pattern <id-or-glob>...] [--dry-run] [--force] [--global] [--agent codex|opencode|claude]`
 
 **参数**:
-- `pattern` (可选，可重复): 不传时刷新全部已启用技能；单字面量无通配符时按精确 ID 刷新（向后兼容）；含通配符或多个参数时按 `ID` 字段做 glob 匹配，逐个处理并打印成功/失败汇总。详见 §6。
+- `--pattern` (可选，可重复): 不传时刷新全部已启用技能；单字面量无通配符时按精确 ID 刷新（向后兼容）；含通配符或多个值时按 `ID` 字段做 glob 匹配，逐个处理并打印成功/失败汇总。基于 Go `path.Match`，详见 §6。
 
 **选项**:
 - `--dry-run`: 演习模式，仅显示将要执行的变更，不实际修改文件。
@@ -697,7 +695,7 @@ skill-hub status git-expert --global --agent codex
 skill-hub apply
 
 # 只刷新一个已启用项目技能，常用于修复 Outdated 状态
-skill-hub apply git-expert
+skill-hub apply --pattern git-expert
 
 # 演习模式查看将要进行的变更
 skill-hub apply --dry-run
@@ -705,22 +703,20 @@ skill-hub apply --dry-run
 # 预览和刷新本机全局技能
 skill-hub apply --global --dry-run
 skill-hub apply --global
-skill-hub apply git-expert --global --agent codex
+skill-hub apply --pattern git-expert --global --agent codex
 
 # 按 ID pattern 批量应用
-skill-hub apply 'magic*'
+skill-hub apply --pattern 'magic*'
 ```
 
 ### 4.11 feedback - 将项目工作区里技能修改更新至本地仓库
 
 **语法**:
-- `skill-hub feedback <id> [--dry-run] [--force] [--json]`
-- `skill-hub feedback <pattern>... [--dry-run] [--force] [--json]`
+- `skill-hub feedback --pattern <id-or-glob>... [--dry-run] [--force] [--json]`
 - `skill-hub feedback --all [--dry-run] [--force] [--json]`
 
 **参数**:
-- `id` (单技能模式必需): 要更新的技能标识符。
-- `pattern` (可选，可重复): 单字面量无通配符按精确 ID 处理；含通配符或多个参数时按 `ID` 字段做 glob 匹配，逐个处理并打印成功/失败汇总。详见 §6。
+- `--pattern` (必需，可重复): 单字面量无通配符按精确 ID 处理；含通配符或多个值时按 `ID` 字段做 glob 匹配，逐个处理并打印成功/失败汇总。基于 Go `path.Match`，详见 §6。
 
 **选项**:
 - `--dry-run`: 演习模式，仅显示将要同步的差异。
@@ -755,16 +751,16 @@ skill-hub apply 'magic*'
 **示例**:
 ```bash
 # 反馈 my-logic 技能的修改
-skill-hub feedback my-logic
+skill-hub feedback --pattern my-logic
 
 # 演习模式查看将要同步的差异
-skill-hub feedback git-expert --dry-run
+skill-hub feedback --pattern git-expert --dry-run
 
 # 批量反馈并输出机器可读摘要
 skill-hub feedback --all --force --json
 
 # 按 ID pattern 批量反馈（需 --force 或 --dry-run）
-skill-hub feedback 'magic*' --dry-run
+skill-hub feedback --pattern 'magic*' --dry-run
 ```
 
 ### 4.12 prune - 清理失效项目状态
@@ -1001,33 +997,37 @@ skill-hub git remote https://github.com/your-username/skills-repo.git
 
 ## 6. Pattern 语法与批量操作
 
-下列命令接受基于 Go `path.Match` 的 glob pattern，匹配**技能 ID 字段**，用于按 ID 前缀或通配符筛选：
+下列命令通过 `--pattern` 标志接受基于 Go `path.Match` 的 glob pattern，匹配**技能 ID 字段**，用于按 ID 前缀或通配符筛选：
 
-- `list [pattern...]`
-- `use <pattern> [pattern...]`
-- `status [pattern...]`
-- `apply [pattern...]`
-- `feedback [pattern...]`
-- `validate [pattern...]`
+- `list --pattern <glob>...`
+- `use --pattern <glob>...`
+- `status --pattern <glob>...`
+- `apply --pattern <glob>...`
+- `feedback --pattern <glob>...`
+- `validate --pattern <glob>...`
+
+**为什么用 `--pattern` 而非位置参数**：`pattern` 形如 `magic*` 在大多数 shell 中会被 bash 提前展开为 cwd 下的文件名，再交给 CLI 进程，破坏 glob 语义。`--pattern` 的值由 cobra 在 fork 之后解析，绕开 shell 展开。位置参数形式 `list magic*` / `use foo*` / `apply magic*` 等已废弃，使用位置参数会被拒绝并提示改用 `--pattern`。
 
 **语法**：
 
 | 符号 | 含义 | 示例 |
 |------|------|------|
-| `*`  | 匹配零或多个任意字符 | `magic*` 匹配 `magic-helper`、`magic-pack` |
-| `?`  | 匹配恰好一个任意字符 | `git-?` 匹配 `git-x` |
-| `[abc]` | 字符类（Go 风格，否定用 `[^abc]`） | `[mg]it-*` 匹配 `git-*` 或 `mit-*` |
-| `**` | 匹配全部技能 | `**` 等同不传 pattern |
+| `*`  | 匹配零或多个任意字符 | `--pattern 'magic*'` 匹配 `magic-helper`、`magic-pack` |
+| `?`  | 匹配恰好一个任意字符 | `--pattern 'git-?'` 匹配 `git-x` |
+| `[abc]` | 字符类（Go 风格，否定用 `[^abc]`） | `--pattern '[mg]it-*'` 匹配 `git-*` 或 `mit-*` |
+| `**` | 匹配全部技能 | `--pattern '**'` 等同不传 `--pattern` |
 
 **保留规则**：
 
-- 单字面量参数（无通配符）仍按精确 ID 处理，保持向后兼容；`use <id>`、`status <id>`、`apply <id>`、`feedback <id>`、`validate <id>` 的行为与此前完全一致。
+- 单字面量值（无通配符）按精确 ID 处理，保持向后兼容；`--pattern git-expert` 的行为与 `use git-expert` 此前完全一致。
 - 单独的 `*` 会被拒绝（`ErrInvalidInput`），避免歧义。如需匹配全部请使用 `**`。
+- `--pattern` 的空字符串值（`--pattern ''`）会被拒绝（`ErrInvalidInput`）。
 - 语法错误（未闭合的 `[` 等）会立即返回 `ErrInvalidInput`，并在消息中标明出错 pattern。
+- 同一命令上可重复使用 `--pattern`，多个值之间取**并集**：`--pattern 'magic*' --pattern 'git-*'` 命中 magic 与 git 两个系列。
 
 **批量行为**：
 
-- `use <pattern...>` 命中 0 个技能时**静默通过**，命中 1 个直接启用，命中多个时按现有 `chooseSkillCandidate` 交互选择。
+- `use --pattern <glob>...` 命中 0 个技能时**静默通过**，命中 1 个直接启用，命中多个时按现有 `chooseSkillCandidate` 交互选择。
 - `apply` / `feedback` / `validate` 命中多个时**逐个处理，单个失败不影响后续**，最后打印成功/失败汇总。
 - `list` / `status` 只展示命中的技能；输出仍走原有渲染器，JSON 模式同样生效。
 
@@ -1035,19 +1035,22 @@ skill-hub git remote https://github.com/your-username/skills-repo.git
 
 ```bash
 # 列举所有 magic 前缀的技能
-skill-hub list 'magic*'
+skill-hub list --pattern 'magic*'
 
 # 一次性启用所有 git 相关技能
-skill-hub use 'git-*'
+skill-hub use --pattern 'git-*'
+
+# 多个 --pattern 取并集
+skill-hub list --pattern 'magic*' --pattern 'git-*'
 
 # 检查所有 magic 系列技能的项目状态
-skill-hub status 'magic*' --json
+skill-hub status --pattern 'magic*' --json
 
 # 批量应用所有匹配 skill，并打印汇总
-skill-hub apply 'magic*'
+skill-hub apply --pattern 'magic*'
 
 # 批量反馈（需 --force 或 --dry-run）
-skill-hub feedback 'magic*' --dry-run
+skill-hub feedback --pattern 'magic*' --dry-run
 ```
 
 ## 7. 使用示例

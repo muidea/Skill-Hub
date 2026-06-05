@@ -144,11 +144,11 @@ class TestFeedbackApplyMultiFile:
         print(f"  Files: {[str(f) for f in project_files[:5]]}...")
         
         # First feedback to repository (required before use)
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Initial feedback failed: {result.stderr}"
         
         # Use the skill (now it exists in repository)
-        result = self.cmd.run("use", [skill_name], cwd=str(self.project_dir), input_text="\n")
+        result = self.cmd.run("use", ["--pattern", skill_name], cwd=str(self.project_dir), input_text="\n")
         assert result.success, f"skill-hub use failed: {result.stderr}"
         
         # Apply the skill
@@ -162,7 +162,7 @@ class TestFeedbackApplyMultiFile:
         config_file.write_text(original_content + "\n# Modified for feedback test\n")
         
         # Run feedback command again
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Second feedback failed: {result.stderr}"
         
         # Verify files were copied to repository
@@ -224,7 +224,7 @@ class TestFeedbackApplyMultiFile:
         project_skill_dir, project_files = self._copy_multi_file_skill_to_project(skill_name)
         
         # Feedback the skill to repository first (it exists locally)
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback failed: {result.stderr}"
         
         # Remove the skill from project to test apply from repository
@@ -236,7 +236,7 @@ class TestFeedbackApplyMultiFile:
         
         # Now test applying from repository
         # Use the skill (it exists in repository now)
-        result = self.cmd.run("use", [skill_name], cwd=str(self.project_dir), input_text="\n")
+        result = self.cmd.run("use", ["--pattern", skill_name], cwd=str(self.project_dir), input_text="\n")
         assert result.success, f"skill-hub use failed: {result.stderr}"
         
         # Apply the skill from repository
@@ -303,7 +303,7 @@ class TestFeedbackApplyMultiFile:
         project_skill_dir, original_files = self._copy_multi_file_skill_to_project(skill_name)
         
         # Step 1: Initial feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Initial feedback failed: {result.stderr}"
         
         repo_skill_dir = self.repo_skills_dir / skill_name
@@ -333,7 +333,7 @@ class TestFeedbackApplyMultiFile:
         print(f"  Made {len(modifications)} modifications in project")
         
         # Step 3: Second feedback (should update repository)
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Second feedback failed: {result.stderr}"
         
         # Verify modifications are in repository
@@ -354,7 +354,7 @@ class TestFeedbackApplyMultiFile:
         assert result.success
         
         # Use skill
-        result = self.cmd.run("use", [skill_name], cwd=str(fresh_project_dir), input_text="\n")
+        result = self.cmd.run("use", ["--pattern", skill_name], cwd=str(fresh_project_dir), input_text="\n")
         assert result.success
         
         # Apply skill
@@ -424,7 +424,7 @@ class TestFeedbackApplyMultiFile:
         print(f"  Max depth: {max(path.count('/') for path in nested_paths)} levels")
         
         # Feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success
         
         # Verify repository has same structure
@@ -499,7 +499,7 @@ class TestFeedbackApplyMultiFile:
                 print(f"  Note: Could not set permissions for {filename}: {e}")
         
         # Feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success
         
         # Note: File permissions may not be preserved across all systems/filesystems
@@ -563,7 +563,7 @@ class TestFeedbackApplyMultiFile:
         print(f"  Created skill with {total_files} files")
         
         # Feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Feedback failed with {total_files} files: {result.stderr}"
         
         # Verify
@@ -626,7 +626,7 @@ class TestFeedbackApplyMultiFile:
         print(f"  Created skill with {len(file_types)} different file types")
         
         # Feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Feedback failed: {result.stderr}"
         
         # Verify
@@ -666,7 +666,7 @@ class TestFeedbackApplyMultiFile:
         project_skill_dir, project_files = self._copy_multi_file_skill_to_project(skill_name)
         
         # Feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Feedback failed: {result.stderr}"
         
         # Check state file
@@ -717,14 +717,14 @@ class TestFeedbackApplyMultiFile:
         skill_md.write_text("# Test Skill\n\nMinimal skill.")
         
         # Feedback should work with just SKILL.md
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         
         # It might succeed or fail depending on implementation
         print(f"  Feedback with minimal skill: returncode={result.exit_code}")
         print(f"  stdout: {result.stdout[:100]}...")
         
         # Test with non-existent skill
-        result = self.cmd.run("feedback", ["non-existent-skill"], cwd=str(self.project_dir))
+        result = self.cmd.run("feedback", ["--pattern", "non-existent-skill", "--force"], cwd=str(self.project_dir))
         print(f"  Feedback non-existent skill: returncode={result.exit_code}")
         print(f"  stderr: {result.stderr[:100]}...")
         
@@ -751,7 +751,7 @@ class TestFeedbackApplyMultiFile:
         print(f"  Starting with {len(project_files)} files")
         
         # 1. Initial feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Initial feedback failed: {result.stderr}"
         
         # 2. Verify repository
@@ -764,11 +764,11 @@ class TestFeedbackApplyMultiFile:
         config_file.write_text(original_config + "\n# Modified in workflow test\n")
         
         # 4. Second feedback (update)
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Update feedback failed: {result.stderr}"
         
         # 5. Apply through the standard project workspace
-        result = self.cmd.run("use", [skill_name], cwd=str(self.project_dir), input_text="\n")
+        result = self.cmd.run("use", ["--pattern", skill_name], cwd=str(self.project_dir), input_text="\n")
         assert result.success
         
         result = self.cmd.run("apply", cwd=str(self.project_dir))

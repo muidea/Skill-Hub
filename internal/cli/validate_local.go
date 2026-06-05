@@ -16,7 +16,7 @@ import (
 )
 
 var validateCmd = &cobra.Command{
-	Use:   "validate [pattern...]",
+	Use:   "validate --all | --pattern ...",
 	Short: "验证本地新建技能的合规性",
 	Long: `验证指定技能在项目本地工作区中的文件是否合规，主要用于 create 之后、feedback 之前的本地校验。
 
@@ -24,21 +24,15 @@ var validateCmd = &cobra.Command{
 使用 --links 可额外检查 SKILL.md 与技能目录内 Markdown 文件中的本地链接。
 使用 --fix 可为缺失或不完整的 legacy SKILL.md 安全补齐 frontmatter，并在修改前创建备份。
 
-Pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
+输入形式（必须二选一）：
+  --all                 验证当前项目状态中登记的所有技能
+  --pattern '<glob>'    验证匹配 pattern 的技能（可重复）
+
+--pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
   *        匹配零或多个任意字符
   ?        匹配恰好一个任意字符
-  **       匹配全部
-单字面量参数仍按精确 ID 处理；多参数或含通配符时按 pattern 批量解析，逐个技能执行验证并汇总。`,
-	Args: func(cmd *cobra.Command, args []string) error {
-		all, _ := cmd.Flags().GetBool("all")
-		if all {
-			return cobra.NoArgs(cmd, args)
-		}
-		if len(args) < 1 {
-			return cobra.ExactArgs(1)(cmd, args)
-		}
-		return nil
-	},
+  **       匹配全部`,
+	Args:              rejectPositionalPattern,
 	ValidArgsFunction: completeEnabledSkillIDsForCwd,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		opts := validateCLIOptions{
@@ -49,13 +43,20 @@ Pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
 			JSON:        mustGetBoolFlag(cmd, "json"),
 		}
 		opts.ProjectRoot, _ = cmd.Flags().GetString("project-root")
+		patterns, err := readPatternFlag(cmd)
+		if err != nil {
+			return err
+		}
 		if opts.All {
+			if len(patterns) > 0 {
+				return errors.NewWithCodef("validate", errors.ErrInvalidInput, "--all and --pattern are mutually exclusive")
+			}
 			return runValidateAllWithOptions(opts)
 		}
-		if len(args) == 1 && !hasWildcard(args[0]) {
-			return runValidateWithOptions(args[0], opts)
+		if len(patterns) == 0 {
+			return errors.NewWithCodef("validate", errors.ErrInvalidInput, "specify --all or --pattern '<id-or-glob>'")
 		}
-		return runValidateByPatterns(args, opts)
+		return runValidateByPatterns(patterns, opts)
 	},
 }
 
@@ -75,6 +76,7 @@ func init() {
 	validateCmd.Flags().Bool("check-remote", false, "同时检查HTTP/HTTPS远端链接")
 	validateCmd.Flags().String("project-root", "", "解析项目相对链接的根目录，默认使用当前项目目录或metadata.project_root")
 	validateCmd.Flags().Bool("json", false, "以JSON格式输出验证报告")
+	validateCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。值不会被 shell 展开。")
 }
 
 func runValidateWithOptions(skillID string, opts validateCLIOptions) error {
@@ -160,9 +162,35 @@ func runValidateSilent(opts projectlifecycleservice.ValidateOptions) (*projectli
 // set and runs the silent validation path for each matched ID, then renders
 // a single aggregate report. Failures on individual skills are not fatal;
 // the report surfaces them.
+//
+// When every pattern is a literal ID (no wildcards / **), preserve the
+// pre-v0.8.13 single-ID semantics: each ID is validated directly against
+// the project workspace, even if the skill is not yet in any repo. This
+// is the only way the common "create + validate" workflow continues to
+// work after the --pattern migration.
 func runValidateByPatterns(patterns []string, opts validateCLIOptions) error {
-	if _, err := compilePatterns(patterns); err != nil {
+	matchers, err := compilePatterns(patterns)
+	if err != nil {
 		return err
+	}
+	allLiteral := len(matchers) > 0
+	for _, m := range matchers {
+		if !m.IsLiteral() {
+			allLiteral = false
+			break
+		}
+	}
+	if allLiteral {
+		seen := make(map[string]struct{}, len(patterns))
+		ids := make([]string, 0, len(patterns))
+		for _, p := range patterns {
+			if _, ok := seen[p]; ok {
+				continue
+			}
+			seen[p] = struct{}{}
+			ids = append(ids, p)
+		}
+		return runValidateByLiteralIDs(ids, opts)
 	}
 	allMatches, err := resolveSkillsByPatterns(patterns)
 	if err != nil {
@@ -226,6 +254,59 @@ func runValidateByPatterns(patterns []string, opts validateCLIOptions) error {
 	}
 	if aggregate.Failed > 0 {
 		return errors.NewWithCodef("runValidateByPatterns", errors.ErrValidation, "%d 个技能验证失败", aggregate.Failed)
+	}
+	return firstErr
+}
+
+// runValidateByLiteralIDs is the same as runValidateByPatterns but takes
+// already-resolved literal IDs (no pattern resolution against the repo).
+// Used by the single-literal case to validate skills that exist only in
+// the project workspace.
+func runValidateByLiteralIDs(ids []string, opts validateCLIOptions) error {
+	aggregate := &projectlifecycleservice.ValidateReport{
+		SkillID:     strings.Join(ids, ","),
+		Fix:         opts.Fix,
+		Links:       opts.Links,
+		CheckRemote: opts.CheckRemote,
+		ProjectRoot: opts.ProjectRoot,
+	}
+	var firstErr error
+	for _, id := range ids {
+		silentOpts := projectlifecycleservice.ValidateOptions{
+			SkillID:     id,
+			Fix:         opts.Fix,
+			Links:       opts.Links,
+			CheckRemote: opts.CheckRemote,
+			ProjectRoot: opts.ProjectRoot,
+		}
+		report, rErr := runValidateSilent(silentOpts)
+		if rErr != nil && firstErr == nil {
+			firstErr = rErr
+		}
+		if report == nil {
+			continue
+		}
+		if aggregate.ProjectPath == "" {
+			aggregate.ProjectPath = report.ProjectPath
+		}
+		aggregate.Total += report.Total
+		aggregate.Passed += report.Passed
+		aggregate.Failed += report.Failed
+		aggregate.Repaired += report.Repaired
+		aggregate.LinkIssueCount += report.LinkIssueCount
+		aggregate.Items = append(aggregate.Items, report.Items...)
+		aggregate.LinkIssues = append(aggregate.LinkIssues, report.LinkIssues...)
+		aggregate.Failures = append(aggregate.Failures, report.Failures...)
+	}
+	if opts.JSON {
+		if writeErr := writeJSON(aggregate); writeErr != nil {
+			return writeErr
+		}
+	} else {
+		renderValidateReport(aggregate)
+	}
+	if aggregate.Failed > 0 {
+		return errors.NewWithCodef("runValidateByLiteralIDs", errors.ErrValidation, "%d 个技能验证失败", aggregate.Failed)
 	}
 	return firstErr
 }

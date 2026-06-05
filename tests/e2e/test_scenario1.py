@@ -99,7 +99,7 @@ class TestScenario1LocalIncubation:
         print(f"✓ create command dependency check passed")
         
         # 测试未初始化时执行 skill-hub validate my-logic
-        result = self.cmd.run("validate", ["my-logic"], cwd=str(temp_dir))
+        result = self.cmd.run("validate", ["--pattern", "my-logic"], cwd=str(temp_dir))
         # 应该提示需要先进行初始化
         assert not result.success or "需要先进行初始化" in result.stdout or "需要先进行初始化" in result.stderr, \
             f"Should prompt for initialization when running validate without init"
@@ -107,7 +107,7 @@ class TestScenario1LocalIncubation:
         print(f"✓ validate command dependency check passed")
         
         # 测试未初始化时执行 skill-hub feedback my-logic
-        result = self.cmd.run("feedback", ["my-logic"], cwd=str(temp_dir))
+        result = self.cmd.run("feedback", ["--pattern", "my-logic", "--force"], cwd=str(temp_dir))
         # 应该提示需要先进行初始化
         assert not result.success or "需要先进行初始化" in result.stdout or "需要先进行初始化" in result.stderr, \
             f"Should prompt for initialization when running feedback without init"
@@ -217,12 +217,12 @@ class TestScenario1LocalIncubation:
         assert "Test Modification" in current_content, "Modification not written to SKILL.md"
         
         # 执行 skill-hub validate my-logic
-        result = self.cmd.run("validate", [skill_name], cwd=str(self.project_dir))
+        result = self.cmd.run("validate", ["--pattern", skill_name], cwd=str(self.project_dir))
         # validate 应该成功
         print(f"  validate command executed")
         
         # 执行 skill-hub feedback my-logic
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback failed: {result.stderr}"
         
         # 验证仓库同步
@@ -332,11 +332,11 @@ class TestScenario1LocalIncubation:
             f.write("\n\n## Integration Test Modification\nAdded during full workflow test.")
         
         # 5. 验证技能
-        result = self.cmd.run("validate", [skill_name], cwd=str(self.project_dir))
+        result = self.cmd.run("validate", ["--pattern", skill_name], cwd=str(self.project_dir))
         print(f"  Step 5: validate executed")
         
         # 6. 反馈到仓库
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Step 6: feedback failed: {result.stderr}"
         
         # 7. 检查列表

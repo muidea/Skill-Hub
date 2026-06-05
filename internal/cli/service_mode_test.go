@@ -303,8 +303,11 @@ func TestRunStatusViaServiceWithoutLocalConfig(t *testing.T) {
 func TestRunUseViaServiceWithoutLocalConfig(t *testing.T) {
 	projectDir := t.TempDir()
 	reset := stubServiceBridge(t, &fakeServiceBridgeClient{
-		findSkillCandidatesFn: func(ctx context.Context, skillID string) ([]spec.SkillMetadata, error) {
-			return []spec.SkillMetadata{{ID: skillID, Name: "Demo Skill", Repository: "main"}}, nil
+		findSkillsByPatternsFn: func(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error) {
+			if len(patterns) != 1 || patterns[0] != "demo-skill" {
+				t.Fatalf("unexpected patterns argument: %#v", patterns)
+			}
+			return []spec.SkillMetadata{{ID: "demo-skill", Name: "Demo Skill", Repository: "main"}}, nil
 		},
 		getSkillDetailFn: func(ctx context.Context, skillID, repoName string) (*spec.Skill, error) {
 			return &spec.Skill{ID: skillID, Name: "Demo Skill", Repository: repoName, Version: "1.0.0"}, nil
@@ -320,8 +323,8 @@ func TestRunUseViaServiceWithoutLocalConfig(t *testing.T) {
 
 	output := withWorkingDir(t, projectDir, func() string {
 		return captureStdout(t, func() {
-			if err := runUseByID("demo-skill", nil, false); err != nil {
-				t.Fatalf("runUseByID returned error: %v", err)
+			if err := runUseByPatterns([]string{"demo-skill"}, nil, false); err != nil {
+				t.Fatalf("runUseByPatterns returned error: %v", err)
 			}
 		})
 	})
@@ -359,6 +362,56 @@ func TestRunApplyViaServiceWithoutLocalConfig(t *testing.T) {
 	})
 	if !strings.Contains(output, "演习模式") {
 		t.Fatalf("unexpected apply output: %q", output)
+	}
+}
+
+// TestRunApplyByPatternViaService exercises the v0.8.13 --pattern path
+// end-to-end through the service bridge: runApplyByPatterns calls
+// FindSkillsByPatterns to resolve, then dispatches to ApplyProject once
+// per matched skill. We assert both calls fire with the expected IDs.
+func TestRunApplyByPatternViaService(t *testing.T) {
+	projectDir := t.TempDir()
+	var applied []string
+	reset := stubServiceBridge(t, &fakeServiceBridgeClient{
+		findSkillsByPatternsFn: func(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error) {
+			if len(patterns) != 1 || patterns[0] != "magic*" {
+				t.Fatalf("unexpected patterns: %#v", patterns)
+			}
+			return []spec.SkillMetadata{
+				{ID: "magic-base", Name: "Magic Base", Repository: "main"},
+				{ID: "magic-pack", Name: "Magic Pack", Repository: "main"},
+			}, nil
+		},
+		applyProjectFn: func(ctx context.Context, req httpapibiz.ApplyProjectRequest) (*httpapibiz.ApplyProjectData, error) {
+			applied = append(applied, req.SkillID)
+			return &httpapibiz.ApplyProjectData{
+				Item: &projectapplyservice.ApplyResult{
+					ProjectPath: req.ProjectPath,
+					DryRun:      true,
+					Items: []projectapplyservice.ApplyResultItem{
+						{SkillID: req.SkillID, Status: "planned", Variables: 0},
+					},
+				},
+			}, nil
+		},
+	})
+	defer reset()
+
+	_ = withWorkingDir(t, projectDir, func() string {
+		return captureStdout(t, func() {
+			if err := runApplyByPatterns([]string{"magic*"}, true, false); err != nil {
+				t.Fatalf("runApplyByPatterns returned error: %v", err)
+			}
+		})
+	})
+	if len(applied) != 2 {
+		t.Fatalf("expected 2 apply calls, got %d (%v)", len(applied), applied)
+	}
+	want := map[string]bool{"magic-base": true, "magic-pack": true}
+	for _, id := range applied {
+		if !want[id] {
+			t.Errorf("unexpected apply call for %q", id)
+		}
 	}
 }
 

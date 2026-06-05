@@ -79,7 +79,7 @@ class TestCreateSkillStructure:
         )
         assert result.success, f"首次 create 失败: {result.stderr}"
 
-        result = self.cmd.run("feedback", [skill_id], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_id, "--force"], cwd=str(self.project_dir))
         assert result.success, f"feedback 失败: {result.stderr}"
 
         result = self.cmd.run(
@@ -113,7 +113,7 @@ class TestStatusSkillContent:
         )
         assert result.success, f"create failed: {result.stderr}"
 
-        result = self.cmd.run("feedback", [skill_id], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_id, "--force"], cwd=str(self.project_dir))
         assert result.success, f"feedback failed: {result.stderr}"
 
         skill_dir = self.agents_skills_dir / skill_id
@@ -148,7 +148,7 @@ class TestUseOnlyUpdatesState:
         )
         assert result.success, f"create failed: {result.stderr}"
 
-        result = self.cmd.run("feedback", [skill_id], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_id, "--force"], cwd=str(self.project_dir))
         assert result.success, f"feedback failed: {result.stderr}"
 
         project_skill_dir = self.agents_skills_dir / skill_id
@@ -156,7 +156,7 @@ class TestUseOnlyUpdatesState:
         shutil.rmtree(project_skill_dir)
         assert not project_skill_dir.exists(), "已删除项目内技能目录以便测试 use"
 
-        result = self.cmd.run("use", [skill_id], cwd=str(self.project_dir), input_text="\n")
+        result = self.cmd.run("use", ["--pattern", skill_id], cwd=str(self.project_dir), input_text="\n")
         assert result.success, f"use failed: {result.stderr}"
 
         state_file = self.skill_hub_dir / "state.json"
@@ -202,7 +202,7 @@ class TestFeedbackApplyFullDirectory:
         (skill_dir / "assets" / "icon.png").parent.mkdir(parents=True, exist_ok=True)
         (skill_dir / "assets" / "icon.png").write_bytes(b"\x89PNG\r\n\x1a\n")
 
-        result = self.cmd.run("feedback", [skill_id], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_id, "--force"], cwd=str(self.project_dir))
         assert result.success, f"feedback failed: {result.stderr}"
 
         repo_skill_dir = self.repo_skills_dir / skill_id

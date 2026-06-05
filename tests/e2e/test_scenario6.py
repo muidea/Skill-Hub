@@ -65,11 +65,11 @@ class TestScenario6RemoteSynchronization:
                     f.write("\n\n## Git Expert Skill\nA test skill for synchronization testing.")
                 
                 # 反馈到仓库
-                result = self.cmd.run("feedback", [self.test_skill_name], cwd=str(self.project_dir), input_text="y\n")
+                result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--force"], cwd=str(self.project_dir))
                 print(f"Test skill '{self.test_skill_name}' created and fed back to repository")
                 
                 # 启用技能并应用
-                result = self.cmd.run("use", [self.test_skill_name], cwd=str(self.project_dir))
+                result = self.cmd.run("use", ["--pattern", self.test_skill_name], cwd=str(self.project_dir))
                 result = self.cmd.run("apply", cwd=str(self.project_dir))
         
     def test_01_command_dependency_check(self):
@@ -226,7 +226,7 @@ class TestScenario6RemoteSynchronization:
                     with open(skill_md, 'a') as f:
                         f.write("\n\n## Collaboration Skill\nCreated on Device A.")
                     
-                    result = self.cmd.run("feedback", [skill_name], cwd=str(device_a_dir), input_text="y\n")
+                    result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(device_a_dir))
                     print(f"    Skill created and fed back by Device A")
         
         # 设备B：初始化并拉取更新
@@ -239,7 +239,7 @@ class TestScenario6RemoteSynchronization:
                 print(f"    Device B pulled updates")
             
             # 启用技能
-            result = self.cmd.run("use", [skill_name], cwd=str(device_b_dir))
+            result = self.cmd.run("use", ["--pattern", skill_name], cwd=str(device_b_dir))
             result = self.cmd.run("apply", cwd=str(device_b_dir))
             print(f"    Device B enabled and applied skill")
         

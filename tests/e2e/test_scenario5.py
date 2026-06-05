@@ -42,7 +42,7 @@ class TestScenario5TargetBusinessRemoval:
         result = self.cmd.run("create", ["target-flag-skill", "--target", "open_code"], cwd=str(self.project_dir))
         assert not result.success, "create --target should be removed"
 
-        result = self.cmd.run("use", ["missing-skill", "--target", "open_code"], cwd=str(self.project_dir))
+        result = self.cmd.run("use", ["--pattern", "missing-skill", "--target", "open_code"], cwd=str(self.project_dir))
         assert not result.success, "use --target should be removed"
 
     def test_02_standard_workflows_do_not_write_preferred_target(self):
@@ -52,14 +52,14 @@ class TestScenario5TargetBusinessRemoval:
         result = self.cmd.run("create", [skill_id], cwd=str(self.project_dir), input_text="\n")
         assert result.success, f"create failed: {result.stderr}"
 
-        result = self.cmd.run("feedback", [skill_id], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_id, "--force"], cwd=str(self.project_dir))
         assert result.success, f"feedback failed: {result.stderr}"
 
         project_skill_dir = self.project_skills_dir / skill_id
         if project_skill_dir.exists():
             shutil.rmtree(project_skill_dir)
 
-        result = self.cmd.run("use", [skill_id], cwd=str(self.project_dir), input_text="\n")
+        result = self.cmd.run("use", ["--pattern", skill_id], cwd=str(self.project_dir), input_text="\n")
         assert result.success, f"use failed: {result.stderr}"
 
         result = self.cmd.run("apply", cwd=str(self.project_dir))
@@ -100,7 +100,7 @@ class TestScenario5TargetBusinessRemoval:
             ),
             encoding="utf-8",
         )
-        result = self.cmd.run("feedback", [skill_id], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_id, "--force"], cwd=str(self.project_dir))
         assert result.success, f"feedback failed for {skill_id}: {result.stderr}"
 
     def _project_state(self):

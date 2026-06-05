@@ -51,7 +51,7 @@ Use this skill for global management coverage.
 
         use_result = self.cmd.run(
             "use",
-            ["global-demo", "--global", "--agent", "codex"],
+            ["--pattern", "global-demo", "--global", "--agent", "codex"],
             cwd=str(self.project_dir),
         )
         assert use_result.success, f"use --global failed: {use_result.stderr}\n{use_result.stdout}"
@@ -65,7 +65,7 @@ Use this skill for global management coverage.
 
         status_before = self.cmd.run(
             "status",
-            ["global-demo", "--global", "--agent", "codex", "--json"],
+            ["--pattern", "global-demo", "--global", "--agent", "codex", "--json"],
             cwd=str(self.project_dir),
         )
         assert status_before.success, f"status --global before apply failed: {status_before.stderr}\n{status_before.stdout}"
@@ -75,7 +75,7 @@ Use this skill for global management coverage.
 
         dry_run = self.cmd.run(
             "apply",
-            ["global-demo", "--global", "--agent", "codex", "--dry-run"],
+            ["--pattern", "global-demo", "--global", "--agent", "codex", "--dry-run"],
             cwd=str(self.project_dir),
         )
         assert dry_run.success, f"apply --global --dry-run failed: {dry_run.stderr}\n{dry_run.stdout}"
@@ -83,7 +83,7 @@ Use this skill for global management coverage.
 
         apply_result = self.cmd.run(
             "apply",
-            ["global-demo", "--global", "--agent", "codex"],
+            ["--pattern", "global-demo", "--global", "--agent", "codex"],
             cwd=str(self.project_dir),
         )
         assert apply_result.success, f"apply --global failed: {apply_result.stderr}\n{apply_result.stdout}"
@@ -98,7 +98,7 @@ Use this skill for global management coverage.
 
         status_after = self.cmd.run(
             "status",
-            ["global-demo", "--global", "--agent", "codex", "--json"],
+            ["--pattern", "global-demo", "--global", "--agent", "codex", "--json"],
             cwd=str(self.project_dir),
         )
         assert status_after.success, f"status --global after apply failed: {status_after.stderr}\n{status_after.stdout}"
@@ -107,11 +107,14 @@ Use this skill for global management coverage.
 
         mismatch = self.cmd.run(
             "status",
-            ["global-demo", "--global", "--agent", "opencode", "--json"],
+            ["--pattern", "global-demo", "--global", "--agent", "opencode", "--json"],
             cwd=str(self.project_dir),
         )
-        assert not mismatch.success
-        assert "SKILL_NOT_FOUND" in mismatch.stderr or "SKILL_NOT_FOUND" in mismatch.stdout
+        assert mismatch.success, f"status --global --agent opencode should succeed: {mismatch.stderr}\n{mismatch.stdout}"
+        mismatch_data = json.loads(mismatch.stdout)
+        # The skill is enabled for codex, not opencode, so the opencode
+        # status should report 0 items (the skill doesn't apply there).
+        assert mismatch_data["skill_count"] == 0
 
         remove_result = self.cmd.run(
             "remove",

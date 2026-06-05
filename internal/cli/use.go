@@ -15,10 +15,10 @@ import (
 )
 
 var useCmd = &cobra.Command{
-	Use:   "use <pattern> [pattern...]",
+	Use:   "use --pattern ... [--global] [--agent ...]",
 	Short: "使用技能",
-	Long: `将技能标记为在当前项目中使用。每个 positional 参数是一个 glob pattern（基于 Go path.Match），
-匹配技能 ID 字段：
+	Long: `将技能标记为在当前项目中使用。pattern 经由 --pattern 标志传入（由 cobra 解析，
+不会被 shell 展开），匹配技能 ID 字段（基于 Go path.Match）：
   *        匹配零或多个任意字符
   ?        匹配恰好一个任意字符
   **       匹配全部
@@ -30,44 +30,74 @@ var useCmd = &cobra.Command{
 行为：
   - pattern 命中 0 个技能：静默通过，不报错
   - 命中 1 个：直接启用
-  - 命中多个：交互式选择（跨仓库时）`,
-	Args: cobra.MinimumNArgs(1),
+  - 命中多个：交互式选择（跨仓库时）
+
+注意：v0.8.13 起不再接受位置参数；'use <id>' 形式需改写为 'use --pattern <id>'。`,
+	Args: rejectPositionalPattern,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		global, _ := cmd.Flags().GetBool("global")
 		agents, _ := cmd.Flags().GetStringArray("agent")
-		// Single literal ID (no wildcards) keeps the legacy exact-ID lookup so
-		// `use <id>` continues to match by ID. Patterns and multi-arg go
-		// through the new ID-based resolution.
-		if len(args) == 1 && !hasWildcard(args[0]) {
-			return runUseByID(args[0], agents, global)
+		patterns, err := readPatternFlag(cmd)
+		if err != nil {
+			return err
+		}
+		if len(patterns) == 0 {
+			return errors.NewWithCodef("use", errors.ErrInvalidInput, "missing --pattern value; use --pattern '<id-or-glob>'")
 		}
 		if global {
-			return runUseByPatterns(args, agents, true)
+			return runUseByPatterns(patterns, agents, true)
 		}
-		return runUseByPatterns(args, agents, false)
+		return runUseByPatterns(patterns, agents, false)
 	},
 }
 
 func init() {
 	useCmd.Flags().Bool("global", false, "将技能标记为本机全局使用")
 	useCmd.Flags().StringArray("agent", nil, "指定全局应用的 agent，可重复使用: codex, opencode, claude")
+	useCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。值不会被 shell 展开。")
 	_ = useCmd.RegisterFlagCompletionFunc("agent", completeAgentNames)
-	useCmd.ValidArgsFunction = completeSkillIDs
 }
 
 // runUseByPatterns resolves each pattern against the cross-repo skill set
 // and applies the resolved skill(s). Per pattern: 0 hits is silent, 1 hit is
 // used directly, N hits trigger chooseSkillCandidate. A failure on one
 // pattern does not stop the remaining patterns; the last error is returned.
+//
+// When every pattern is a literal ID (no wildcards / **), preserve the
+// pre-v0.8.13 single-ID semantics: each ID is looked up via the direct
+// filesystem scan (FindSkill), which works even if the registry has not
+// been refreshed for a freshly-written skill. The registry-based
+// FindSkillsByPatterns is still tried first so a single round-trip suffices
+// in the common case; the direct scan is the fallback that lets the
+// `use <id>` exact-ID lookup keep working.
 func runUseByPatterns(patterns []string, agents []string, isGlobal bool) error {
 	matchers, err := compilePatterns(patterns)
 	if err != nil {
 		return err
 	}
 
+	allLiteral := len(matchers) > 0
+	for _, m := range matchers {
+		if !m.IsLiteral() {
+			allLiteral = false
+			break
+		}
+	}
+
 	allMatches, err := resolveSkillsByPatterns(patterns)
 	if err != nil {
 		return err
+	}
+	if allLiteral && len(allMatches) == 0 {
+		// Fall back to the direct filesystem scan so single-literal
+		// use keeps working even if the registry hasn't been refreshed.
+		for _, p := range patterns {
+			direct, directErr := resolveSingleLiteralSkill(p)
+			if directErr != nil {
+				return directErr
+			}
+			allMatches = append(allMatches, direct...)
+		}
 	}
 
 	var lastErr error
@@ -111,6 +141,25 @@ func runUseByPatterns(patterns []string, agents []string, isGlobal bool) error {
 	return lastErr
 }
 
+// resolveSingleLiteralSkill mirrors the v0.8.12 single-ID use path: scan
+// every enabled repo's filesystem directly so callers that wrote a
+// SKILL.md without refreshing the registry still see it.
+func resolveSingleLiteralSkill(skillID string) ([]spec.SkillMetadata, error) {
+	if client, ok := hubClientIfAvailable(); ok {
+		// Service mode is registry-backed; we don't have a per-ID direct
+		// lookup path there. Fall through to the local scan.
+		_ = client
+	}
+	if err := CheckInitDependency(); err != nil {
+		return nil, err
+	}
+	repoManager, err := newRepositoryManager()
+	if err != nil {
+		return nil, errors.Wrap(err, "创建多仓库管理器失败")
+	}
+	return repoManager.FindSkill(skillID)
+}
+
 func resolveSkillsByPatterns(patterns []string) ([]spec.SkillMetadata, error) {
 	if client, ok := hubClientIfAvailable(); ok {
 		matches, err := client.FindSkillsByPatterns(context.Background(), patterns, nil)
@@ -148,53 +197,6 @@ func runUseOneSkill(selected spec.SkillMetadata, isGlobal bool, agents []string)
 		return runUseProjectOneViaService(client, selected)
 	}
 	return runUseProjectOne(selected)
-}
-
-// runUseByID is the legacy single-ID entry point: it resolves a literal
-// skill ID (no wildcards) to a SkillMetadata via the bridge's exact-ID
-// lookup, then applies it. Used by the `use <id>` shortcut to preserve
-// backward compatibility.
-func runUseByID(id string, agents []string, isGlobal bool) error {
-	if client, ok := hubClientIfAvailable(); ok {
-		candidates, err := client.FindSkillCandidates(context.Background(), id)
-		if err != nil {
-			return errors.Wrap(err, "通过服务查找技能失败")
-		}
-		if len(candidates) == 0 {
-			return errors.NewWithCodef("runUseByID", errors.ErrSkillNotFound, "技能 '%s' 不存在", id)
-		}
-		selected := candidates[0]
-		if len(candidates) > 1 {
-			selected, err = chooseSkillCandidate(candidates)
-			if err != nil {
-				return err
-			}
-		}
-		return runUseOneSkill(selected, isGlobal, agents)
-	}
-
-	if err := CheckInitDependency(); err != nil {
-		return err
-	}
-	repoManager, err := newRepositoryManager()
-	if err != nil {
-		return errors.Wrap(err, "创建多仓库管理器失败")
-	}
-	candidates, err := repoManager.FindSkill(id)
-	if err != nil {
-		return errors.Wrap(err, "查找技能失败")
-	}
-	if len(candidates) == 0 {
-		return errors.NewWithCodef("runUseByID", errors.ErrSkillNotFound, "技能 '%s' 不存在", id)
-	}
-	selected := candidates[0]
-	if len(candidates) > 1 {
-		selected, err = chooseSkillCandidate(candidates)
-		if err != nil {
-			return err
-		}
-	}
-	return runUseOneSkill(selected, isGlobal, agents)
 }
 
 func runUseProjectOne(selected spec.SkillMetadata) error {
@@ -367,7 +369,6 @@ func runUseGlobalOneViaService(client serviceUseClient, selected spec.SkillMetad
 }
 
 // compilePatterns is defined in list.go (same package).
-var _ = compilePatterns
 
 type serviceUseClient interface {
 	FindSkillCandidates(ctx context.Context, skillID string) ([]spec.SkillMetadata, error)

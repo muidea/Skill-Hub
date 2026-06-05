@@ -51,6 +51,17 @@ func (m Matcher) Match(s string) bool {
 	return matchGlob(m.pattern, s)
 }
 
+// IsLiteral reports whether the compiled pattern matches a single literal
+// string (no wildcards, not the "**" all-match sentinel). Callers can use
+// this to short-circuit pattern resolution: a literal pattern is a
+// direct-ID lookup, so the resolved set is just {pattern}.
+func (m Matcher) IsLiteral() bool {
+	if m.all {
+		return false
+	}
+	return !strings.ContainsAny(m.pattern, "*?[")
+}
+
 func validatePattern(p string) error {
 	// `[` opens a character class which must terminate with `]`. Bare `[`
 	// or `[a-` is a malformed pattern.

@@ -62,11 +62,11 @@ class TestScenario3IterationFeedback:
                     f.write("\n\n## Git Expert Skill\nA test skill for git operations.")
                 
                 # 反馈到仓库
-                result = self.cmd.run("feedback", [self.test_skill_name], cwd=str(self.project_dir), input_text="y\n")
+                result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--force"], cwd=str(self.project_dir))
                 print(f"Test skill '{self.test_skill_name}' created and fed back to repository")
                 
                 # 启用技能并应用
-                result = self.cmd.run("use", [self.test_skill_name], cwd=str(self.project_dir))
+                result = self.cmd.run("use", ["--pattern", self.test_skill_name], cwd=str(self.project_dir))
                 result = self.cmd.run("apply", cwd=str(self.project_dir))
         
     def test_01_command_dependency_check(self):
@@ -89,10 +89,11 @@ class TestScenario3IterationFeedback:
         
         # 测试未初始化时执行 skill-hub feedback git-expert
         # feedback 命令需要技能存在于项目中，所以会失败
-        result = self.cmd.run("feedback", ["git-expert"], cwd=str(temp_dir))
+        result = self.cmd.run("feedback", ["--pattern", "git-expert", "--force"], cwd=str(temp_dir))
         # 应该失败，因为技能不存在于项目中
         assert not result.success, f"feedback should fail when skill doesn't exist in project"
-        assert "未在项目工作区中启用" in result.stderr or "not enabled" in result.stderr.lower(), \
+        combined = result.stdout + result.stderr
+        assert "未在项目工作区中启用" in combined or "not enabled" in combined.lower(), \
             f"Should indicate skill not enabled in project"
         
         print(f"✓ feedback command dependency check passed (skill doesn't exist)")
@@ -120,7 +121,7 @@ class TestScenario3IterationFeedback:
         assert "Test Modification" in current_content, "Modification not written to SKILL.md"
         
         # 执行 skill-hub status git-expert
-        result = self.cmd.run("status", [self.test_skill_name], cwd=str(self.project_dir))
+        result = self.cmd.run("status", ["--pattern", self.test_skill_name], cwd=str(self.project_dir))
         assert result.success, f"skill-hub status failed: {result.stderr}"
         
         # 验证Modified状态检测机制
@@ -147,7 +148,7 @@ class TestScenario3IterationFeedback:
             f.write("\n\n## Additional modification for feedback test.")
         
         # 执行 skill-hub feedback git-expert
-        result = self.cmd.run("feedback", [self.test_skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback failed: {result.stderr}"
         
         # 验证仓库更新
@@ -166,12 +167,12 @@ class TestScenario3IterationFeedback:
         with open(skill_md, 'a') as f:
             f.write("\n\n## Dry-run test modification.")
         
-        result = self.cmd.run("feedback", [self.test_skill_name, "--dry-run"], cwd=str(self.project_dir))
+        result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--dry-run"], cwd=str(self.project_dir))
         # dry-run 应该显示将要同步的差异但不实际执行
         print(f"  Dry-run mode tested: ✓")
         
         # 执行 skill-hub feedback git-expert --force
-        result = self.cmd.run("feedback", [self.test_skill_name, "--force"], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--force"], cwd=str(self.project_dir))
         # force 模式应该成功
         assert result.success, f"skill-hub feedback --force failed: {result.stderr}"
         print(f"  Force mode tested: ✓")
@@ -196,7 +197,7 @@ class TestScenario3IterationFeedback:
         print(f"  Detailed information shown: {'✓' if is_verbose else '⚠️'}")
         
         # 执行 skill-hub status git-expert
-        result = self.cmd.run("status", [self.test_skill_name], cwd=str(self.project_dir))
+        result = self.cmd.run("status", ["--pattern", self.test_skill_name], cwd=str(self.project_dir))
         assert result.success, f"skill-hub status for specific skill failed: {result.stderr}"
         
         # 验证特定技能状态检查
@@ -238,7 +239,7 @@ class TestScenario3IterationFeedback:
                 print(f"  Modified: {file_path.name}")
         
         # 执行 skill-hub feedback git-expert
-        result = self.cmd.run("feedback", [self.test_skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback for multiple files failed: {result.stderr}"
         
         # 验证批量反馈处理
@@ -260,10 +261,10 @@ class TestScenario3IterationFeedback:
         with open(skill_md, 'a') as f:
             f.write("\n\n## Standard modification extraction\n")
 
-        result = self.cmd.run("status", [self.test_skill_name], cwd=str(self.project_dir))
+        result = self.cmd.run("status", ["--pattern", self.test_skill_name], cwd=str(self.project_dir))
         assert result.success, f"skill-hub status failed: {result.stderr}"
         
-        result = self.cmd.run("feedback", [self.test_skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback failed: {result.stderr}"
         
         print(f"✓ Standard modification extraction verified")
@@ -290,7 +291,7 @@ line3
             f.write(special_chars_content)
         
         # 执行 skill-hub feedback git-expert
-        result = self.cmd.run("feedback", [self.test_skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--force"], cwd=str(self.project_dir))
         
         # 验证转义逻辑正确性
         if result.success:
@@ -340,11 +341,11 @@ line3
             print(f"  Modified: {filename}")
         
         # 检查状态
-        result = self.cmd.run("status", [self.test_skill_name], cwd=str(self.project_dir))
+        result = self.cmd.run("status", ["--pattern", self.test_skill_name], cwd=str(self.project_dir))
         print(f"  Status checked for partial modifications")
         
         # 反馈修改
-        result = self.cmd.run("feedback", [self.test_skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback for partial modifications failed: {result.stderr}"
         
         # 验证选择性反馈

@@ -63,7 +63,7 @@ class TestScenario2StateActivation:
                     f.write("\n\n## Git Expert Skill\nA test skill for git operations.")
                 
                 # 反馈到仓库
-                result = self.cmd.run("feedback", [self.test_skill_name], cwd=str(self.project_dir), input_text="y\n")
+                result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--force"], cwd=str(self.project_dir))
                 print(f"Test skill '{self.test_skill_name}' created and fed back to repository")
         
     def test_01_command_dependency_check(self):
@@ -81,14 +81,11 @@ class TestScenario2StateActivation:
         print(f"✓ init command dependency check passed")
         
         # 测试未初始化时执行 skill-hub use non-existent-skill
-        # use 命令需要技能存在于仓库中，所以会失败
-        result = self.cmd.run("use", ["non-existent-skill"], cwd=str(temp_dir))
-        # 应该失败，因为技能不存在
-        assert not result.success, f"use should fail when skill doesn't exist"
-        assert "不存在" in result.stderr or "未找到" in result.stderr or "not found" in result.stderr.lower(), \
-            f"Should indicate skill doesn't exist"
-        
-        print(f"✓ use command dependency check passed (skill doesn't exist)")
+        # use 命令在 v0.8.12 起对 0 命中 pattern 静默通过；这里使用一个不可能
+        # 命中的 pattern，验证 use 不报错、不写入状态。
+        result = self.cmd.run("use", ["--pattern", "non-existent-skill"], cwd=str(temp_dir))
+        assert result.success, f"use should be silent on 0-hits, got: {result.stderr}"
+        print(f"✓ use command 0-hit silent pass verified")
         
         # 测试未初始化时执行 skill-hub apply
         # skill-hub 会自动初始化项目
@@ -145,7 +142,7 @@ class TestScenario2StateActivation:
         print(f"  Skill '{self.test_skill_name}' found in list: {'✓' if skill_found else '⚠️'}")
         
         # 执行 skill-hub use git-expert
-        result = self.cmd.run("use", [self.test_skill_name], cwd=str(self.project_dir))
+        result = self.cmd.run("use", ["--pattern", self.test_skill_name], cwd=str(self.project_dir))
         assert result.success, f"skill-hub use failed: {result.stderr}"
         
         # 验证 state.json 状态记录（技能标记为启用）
@@ -177,7 +174,7 @@ class TestScenario2StateActivation:
         print("\n=== Test 2.4: Physical Application ===")
         
         # 首先启用技能
-        result = self.cmd.run("use", [self.test_skill_name], cwd=str(self.project_dir))
+        result = self.cmd.run("use", ["--pattern", self.test_skill_name], cwd=str(self.project_dir))
         assert result.success, f"skill-hub use failed: {result.stderr}"
         
         # 执行 skill-hub apply
@@ -215,7 +212,7 @@ class TestScenario2StateActivation:
         """Test 2.5: use updates state without target input"""
         print("\n=== Test 2.5: Use Without Target ===")
         
-        result = self.cmd.run("use", [self.test_skill_name], cwd=str(self.project_dir))
+        result = self.cmd.run("use", ["--pattern", self.test_skill_name], cwd=str(self.project_dir))
         assert result.success, f"skill-hub use failed: {result.stderr}"
         
         state_file = self.skill_hub_dir / "state.json"
@@ -245,13 +242,13 @@ class TestScenario2StateActivation:
                     with open(skill_md, 'a') as f:
                         f.write(f"\n\n## {skill_name}\nAn additional test skill.")
                     
-                    result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+                    result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
                     print(f"  Created and fed back: {skill_name}")
         
         # 启用多个技能
         all_skills = [self.test_skill_name] + extra_skills
         for skill_name in all_skills:
-            result = self.cmd.run("use", [skill_name], cwd=str(self.project_dir))
+            result = self.cmd.run("use", ["--pattern", skill_name], cwd=str(self.project_dir))
             if result.success:
                 print(f"  Enabled: {skill_name}")
         
@@ -273,7 +270,7 @@ class TestScenario2StateActivation:
         """Test 2.7: Standard apply path verification"""
         print("\n=== Test 2.7: Standard Apply Path ===")
         
-        result = self.cmd.run("use", [self.test_skill_name], cwd=str(self.project_dir))
+        result = self.cmd.run("use", ["--pattern", self.test_skill_name], cwd=str(self.project_dir))
         assert result.success, f"skill-hub use failed: {result.stderr}"
         result = self.cmd.run("apply", cwd=str(self.project_dir))
         assert result.success, f"skill-hub apply failed: {result.stderr}"

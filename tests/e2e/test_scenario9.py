@@ -101,7 +101,7 @@ class TestScenario9LocalChangesPush:
         result = project_cmd.run("create", [skill_name], cwd=str(self.project_dir))
         assert result.success, f"skill-hub create failed: {result.stderr}"
         
-        result = project_cmd.run("feedback", [skill_name], cwd=str(self.project_dir))
+        result = project_cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback failed: {result.stderr}"
         
         # Check git status - should show repository status
@@ -136,7 +136,7 @@ class TestScenario9LocalChangesPush:
         skill_md.write_text(original + "\n\n## Modified for push test")
         
         # Feedback to repository
-        result = project_cmd.run("feedback", [skill_name], cwd=str(self.project_dir))
+        result = project_cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback failed: {result.stderr}"
         
         # Push with message
@@ -165,7 +165,7 @@ class TestScenario9LocalChangesPush:
         result = project_cmd.run("create", [skill_name], cwd=str(self.project_dir))
         assert result.success, f"skill-hub create failed: {result.stderr}"
         
-        result = project_cmd.run("feedback", [skill_name], cwd=str(self.project_dir))
+        result = project_cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback failed: {result.stderr}"
         
         # Modify the skill to create changes to push
@@ -175,7 +175,7 @@ class TestScenario9LocalChangesPush:
         skill_md.write_text(original + "\n\n## Modified for dry-run test")
         
         # Feedback the modification
-        result = project_cmd.run("feedback", [skill_name], cwd=str(self.project_dir))
+        result = project_cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback failed: {result.stderr}"
         
         # Dry run push
@@ -210,7 +210,7 @@ class TestScenario9LocalChangesPush:
             prompt_file = skill_dir / "prompt.md"
             prompt_file.write_text(f"# Force push test - iteration {i}\n\nContent modified {i} times")
             
-            result = project_cmd.run("feedback", [skill_name], cwd=str(self.project_dir))
+            result = project_cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
             assert result.success, f"skill-hub feedback failed: {result.stderr}"
         
         # Force push
@@ -260,7 +260,7 @@ class TestScenario9LocalChangesPush:
         print(f"Status before feedback: {result.stdout[:100]}...")
         
         # Feedback to repository
-        result = project_cmd.run("feedback", [skill_name], cwd=str(self.project_dir))
+        result = project_cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub feedback failed: {result.stderr}"
         
         # Check status after feedback

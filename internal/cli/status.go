@@ -20,7 +20,7 @@ import (
 )
 
 var statusCmd = &cobra.Command{
-	Use:   "status [pattern...]",
+	Use:   "status [--pattern ...]",
 	Short: "检查技能状态",
 	Long: `对比项目本地工作区文件与技能仓库源文件的差异，显示技能状态：
 - Synced: 本地与仓库一致
@@ -28,27 +28,25 @@ var statusCmd = &cobra.Command{
 - Outdated: 仓库版本领先于本地
 - Missing: 技能已启用但本地文件缺失
 
-无参数时检查所有已启用技能；提供 pattern 时（基于 Go path.Match，
-匹配技能 ID 字段）只显示 ID 匹配 pattern 的技能。`,
+不带 --pattern 时检查所有已启用技能；带 --pattern 时只显示 ID 匹配
+pattern 的技能。pattern 由 cobra 解析，不会被 shell 展开。`,
+	Args: rejectPositionalPattern,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		jsonOutput, _ := cmd.Flags().GetBool("json")
 		global, _ := cmd.Flags().GetBool("global")
 		agents, _ := cmd.Flags().GetStringArray("agent")
-		if global {
-			return runStatusGlobalDispatch(args, agents, jsonOutput)
+		patterns, err := readPatternFlag(cmd)
+		if err != nil {
+			return err
 		}
-		// No args: existing behavior — show all enabled skills.
-		if len(args) == 0 {
+		if global {
+			return runStatusGlobalDispatch(patterns, agents, jsonOutput)
+		}
+		if len(patterns) == 0 {
 			return runStatus("", verbose, jsonOutput)
 		}
-		// Single literal arg without wildcards: existing exact-ID behavior for
-		// backward compatibility. (e.g. `status magic-team/some-id`).
-		if len(args) == 1 && !hasWildcard(args[0]) {
-			return runStatus(args[0], verbose, jsonOutput)
-		}
-		// Wildcard patterns: resolve by ID, then filter the Inspect summary.
-		return runStatusByPatterns(args, verbose, jsonOutput)
+		return runStatusByPatterns(patterns, verbose, jsonOutput)
 	},
 }
 
@@ -57,21 +55,16 @@ func init() {
 	statusCmd.Flags().Bool("json", false, "以JSON格式输出状态，便于CI和自动化脚本处理")
 	statusCmd.Flags().Bool("global", false, "检查本机全局技能状态")
 	statusCmd.Flags().StringArray("agent", nil, "限制检查的 agent，可重复使用: codex, opencode, claude")
+	statusCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。值不会被 shell 展开。")
 }
 
-func runStatusGlobalDispatch(args []string, agents []string, jsonOutput bool) error {
-	// No positional arg: existing behavior — show all globally-enabled skills.
-	if len(args) == 0 {
+func runStatusGlobalDispatch(patterns []string, agents []string, jsonOutput bool) error {
+	// No --pattern: existing behavior — show all globally-enabled skills.
+	if len(patterns) == 0 {
 		return runStatusGlobal("", agents, jsonOutput)
 	}
-	// Single literal arg without wildcards: pass through as exact ID filter so
-	// `status <id> --global --agent <agent>` keeps returning SKILL_NOT_FOUND
-	// when the skill is not enabled for that agent.
-	if len(args) == 1 && !hasWildcard(args[0]) {
-		return runStatusGlobal(args[0], agents, jsonOutput)
-	}
-	// Wildcard patterns: resolve by ID, then filter the global Inspect summary.
-	return runStatusGlobalByPatterns(args, agents, jsonOutput)
+	// With --pattern: resolve by ID, then filter the global Inspect summary.
+	return runStatusGlobalByPatterns(patterns, agents, jsonOutput)
 }
 
 func runStatusGlobal(skillID string, agents []string, jsonOutput bool) error {
@@ -174,22 +167,37 @@ func writeJSON(v interface{}) error {
 	return encoder.Encode(v)
 }
 
-// hasWildcard reports whether s contains a glob metacharacter.
-func hasWildcard(s string) bool {
-	return strings.ContainsAny(s, "*?[")
-}
-
 // runStatusByPatterns resolves the given patterns and renders the status of
 // the project's enabled skills whose IDs are in the resolved set. An empty
 // match set renders "no matches found" (silent, mirroring `use` semantics).
 func runStatusByPatterns(patterns []string, verbose bool, jsonOutput bool) error {
-	if _, err := compilePatterns(patterns); err != nil {
+	matchers, err := compilePatterns(patterns)
+	if err != nil {
 		return err
+	}
+	allLiteral := len(matchers) > 0
+	for _, m := range matchers {
+		if !m.IsLiteral() {
+			allLiteral = false
+			break
+		}
 	}
 
 	allMatches, err := resolveSkillsByPatterns(patterns)
 	if err != nil {
 		return err
+	}
+	if allLiteral && len(allMatches) == 0 {
+		// Fall back to the direct filesystem scan so single-literal
+		// status keeps working even if the registry hasn't been refreshed
+		// for a freshly-written repo skill.
+		for _, p := range patterns {
+			direct, directErr := resolveSingleLiteralSkill(p)
+			if directErr != nil {
+				return directErr
+			}
+			allMatches = append(allMatches, direct...)
+		}
 	}
 
 	matchedIDs := make(map[string]struct{}, len(allMatches))
@@ -261,13 +269,33 @@ func filterStatusSummaryByIDs(summary *projectstatusservice.ProjectStatusSummary
 // then renders the global status of the skills whose IDs are in the
 // resolved set. An empty match set renders an "empty" summary silently.
 func runStatusGlobalByPatterns(patterns []string, agents []string, jsonOutput bool) error {
-	if _, err := compilePatterns(patterns); err != nil {
+	matchers, err := compilePatterns(patterns)
+	if err != nil {
 		return err
+	}
+	allLiteral := len(matchers) > 0
+	for _, m := range matchers {
+		if !m.IsLiteral() {
+			allLiteral = false
+			break
+		}
 	}
 
 	allMatches, err := resolveSkillsByPatterns(patterns)
 	if err != nil {
 		return err
+	}
+	if allLiteral && len(allMatches) == 0 {
+		// Fall back to the direct filesystem scan so single-literal
+		// global status keeps working even if the registry hasn't been
+		// refreshed for a freshly-written repo skill.
+		for _, p := range patterns {
+			direct, directErr := resolveSingleLiteralSkill(p)
+			if directErr != nil {
+				return directErr
+			}
+			allMatches = append(allMatches, direct...)
+		}
 	}
 	matchedIDs := make(map[string]struct{}, len(allMatches))
 	for _, s := range allMatches {

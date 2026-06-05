@@ -72,7 +72,7 @@ class TestScenario7GitOperations:
                 with open(skill_md, 'a') as f:
                     f.write("\n\n## Git Test Skill\nFor git operations testing.")
                 
-                result = self.cmd.run("feedback", [self.test_skill_name], cwd=str(self.project_dir), input_text="y\n")
+                result = self.cmd.run("feedback", ["--pattern", self.test_skill_name, "--force"], cwd=str(self.project_dir))
                 print(f"Test skill '{self.test_skill_name}' created and fed back to repository")
     
     def test_01_command_dependency_check(self):

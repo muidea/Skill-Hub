@@ -85,7 +85,7 @@ class TestScenario8RemoteSkillSearch:
                     yaml.dump(meta, f)
             
             # Feedback to repository
-            result = project_cmd.run("feedback", [skill['name']], cwd=str(self.project_dir))
+            result = project_cmd.run("feedback", ["--pattern", skill['name'], "--force"], cwd=str(self.project_dir))
             if not result.success:
                 print(f"Warning: Failed to feedback {skill['name']}: {result.stderr}")
     

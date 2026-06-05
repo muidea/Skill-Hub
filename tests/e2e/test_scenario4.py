@@ -65,11 +65,11 @@ class TestScenario4CompleteDeregistration:
                         f.write(f"\n\n## {skill_name}\nA test skill for removal testing.")
                     
                     # 反馈到仓库
-                    result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+                    result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
                     print(f"Test skill '{skill_name}' created and fed back to repository")
                     
                     # 启用技能并应用
-                    result = self.cmd.run("use", [skill_name], cwd=str(self.project_dir))
+                    result = self.cmd.run("use", ["--pattern", skill_name], cwd=str(self.project_dir))
                     result = self.cmd.run("apply", cwd=str(self.project_dir))
         
     def test_01_command_dependency_check(self):
@@ -234,7 +234,7 @@ class TestScenario4CompleteDeregistration:
         assert result.success, f"skill-hub create failed: {result.stderr}"
         
         # 启用并应用
-        result = self.cmd.run("use", [test_skill], cwd=str(self.project_dir))
+        result = self.cmd.run("use", ["--pattern", test_skill], cwd=str(self.project_dir))
         result = self.cmd.run("apply", cwd=str(self.project_dir))
         
         # 修改技能文件（创建未提交的修改）
@@ -283,8 +283,8 @@ class TestScenario4CompleteDeregistration:
                     with open(skill_md, 'a') as f:
                         f.write(f"\n\n## {skill_name}\nTest skill.")
                     
-                    result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
-                    result = self.cmd.run("use", [skill_name], cwd=str(self.project_dir))
+                    result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
+                    result = self.cmd.run("use", ["--pattern", skill_name], cwd=str(self.project_dir))
                     result = self.cmd.run("apply", cwd=str(self.project_dir))
         
         # 测试选择性清理（只移除一个技能）
@@ -327,7 +327,7 @@ class TestScenario4CompleteDeregistration:
         assert result.success, f"skill-hub create failed: {result.stderr}"
         
         # 启用并应用
-        result = self.cmd.run("use", [nested_skill], cwd=str(self.project_dir))
+        result = self.cmd.run("use", ["--pattern", nested_skill], cwd=str(self.project_dir))
         result = self.cmd.run("apply", cwd=str(self.project_dir))
         
         # 创建嵌套目录结构
@@ -416,10 +416,10 @@ class TestScenario4CompleteDeregistration:
         with open(skill_md, 'a') as f:
             f.write("\n\n## Repository Safety Test\nTesting that repository files are never deleted.")
         
-        result = self.cmd.run("feedback", [safety_test_skill], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", safety_test_skill, "--force"], cwd=str(self.project_dir))
         
         # 启用并应用
-        result = self.cmd.run("use", [safety_test_skill], cwd=str(self.project_dir))
+        result = self.cmd.run("use", ["--pattern", safety_test_skill], cwd=str(self.project_dir))
         result = self.cmd.run("apply", cwd=str(self.project_dir))
         
         # 记录仓库文件状态（前）

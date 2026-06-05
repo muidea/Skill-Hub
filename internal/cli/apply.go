@@ -17,22 +17,27 @@ import (
 )
 
 var applyCmd = &cobra.Command{
-	Use:   "apply [pattern...]",
+	Use:   "apply [--pattern ...]",
 	Short: "应用技能到项目",
 	Long: `根据 state.json 中的启用记录，将技能物理分发到当前项目的标准 .agents/skills 目录。
 
-无参数时应用所有已启用技能；提供 pattern 时（基于 Go path.Match，匹配技能 ID 字段）
-逐个应用匹配 pattern 的技能，单个失败不影响其它技能的继续处理。`,
-	Args: cobra.ArbitraryArgs,
+不带 --pattern 时应用所有已启用技能；带 --pattern 时（基于 Go path.Match，
+匹配技能 ID 字段）逐个应用匹配 pattern 的技能，单个失败不影响其它技能的继续处理。
+pattern 由 cobra 解析，不会被 shell 展开。`,
+	Args: rejectPositionalPattern,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		force, _ := cmd.Flags().GetBool("force")
 		global, _ := cmd.Flags().GetBool("global")
 		agents, _ := cmd.Flags().GetStringArray("agent")
-		if global {
-			return runApplyGlobalByPatterns(args, agents, dryRun, force)
+		patterns, err := readPatternFlag(cmd)
+		if err != nil {
+			return err
 		}
-		return runApplyByPatterns(args, dryRun, force)
+		if global {
+			return runApplyGlobalByPatterns(patterns, agents, dryRun, force)
+		}
+		return runApplyByPatterns(patterns, dryRun, force)
 	},
 }
 
@@ -41,6 +46,7 @@ func init() {
 	applyCmd.Flags().Bool("force", false, "强制应用，即使检测到冲突也继续执行")
 	applyCmd.Flags().Bool("global", false, "应用本机全局启用的技能")
 	applyCmd.Flags().StringArray("agent", nil, "限制全局应用的 agent，可重复使用: codex, opencode, claude")
+	applyCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。值不会被 shell 展开。")
 	_ = applyCmd.RegisterFlagCompletionFunc("agent", completeAgentNames)
 }
 
@@ -126,26 +132,43 @@ func runApplyViaService(client serviceApplyClient, skillID string, dryRun bool, 
 	return nil
 }
 
-// runApplyByPatterns dispatches based on arg shape: no args or single
-// non-wildcard arg reuses the existing single-skill path; otherwise patterns
-// are resolved and each match is applied individually with continue+summary.
-func runApplyByPatterns(args []string, dryRun bool, force bool) error {
-	if len(args) == 0 {
+// runApplyByPatterns dispatches based on --pattern: not set reuses the
+// existing "all enabled skills" path; set delegates to runApplyWithPatterns
+// which resolves and applies each matched skill.
+func runApplyByPatterns(patterns []string, dryRun bool, force bool) error {
+	if len(patterns) == 0 {
 		return runApply("", dryRun, force)
 	}
-	if len(args) == 1 && !hasWildcard(args[0]) {
-		return runApply(args[0], dryRun, force)
-	}
-	return runApplyWithPatterns(args, dryRun, force)
+	return runApplyWithPatterns(patterns, dryRun, force)
 }
 
 func runApplyWithPatterns(patterns []string, dryRun bool, force bool) error {
-	if _, err := compilePatterns(patterns); err != nil {
+	matchers, err := compilePatterns(patterns)
+	if err != nil {
 		return err
+	}
+	allLiteral := len(matchers) > 0
+	for _, m := range matchers {
+		if !m.IsLiteral() {
+			allLiteral = false
+			break
+		}
 	}
 	allMatches, err := resolveSkillsByPatterns(patterns)
 	if err != nil {
 		return err
+	}
+	if allLiteral && len(allMatches) == 0 {
+		// Fall back to the direct filesystem scan so single-literal
+		// apply keeps working even if the registry hasn't been refreshed
+		// for a freshly-written repo skill.
+		for _, p := range patterns {
+			direct, directErr := resolveSingleLiteralSkill(p)
+			if directErr != nil {
+				return directErr
+			}
+			allMatches = append(allMatches, direct...)
+		}
 	}
 	if len(allMatches) == 0 {
 		return nil
@@ -222,19 +245,39 @@ func renderApplyResult(result *projectapplyservice.ApplyResult) {
 }
 
 // runApplyGlobalByPatterns mirrors runApplyByPatterns for the --global path.
-func runApplyGlobalByPatterns(args []string, agents []string, dryRun bool, force bool) error {
-	if len(args) == 0 {
+func runApplyGlobalByPatterns(patterns []string, agents []string, dryRun bool, force bool) error {
+	if len(patterns) == 0 {
 		return runApplyGlobal("", agents, dryRun, force)
-	}
-	if len(args) == 1 && !hasWildcard(args[0]) {
-		return runApplyGlobal(args[0], agents, dryRun, force)
 	}
 	// For global apply, resolve patterns to skill IDs and call per-ID. The
 	// global apply service accepts a SkillID filter; an empty SkillID applies
 	// all enabled global skills, which is not what we want for a pattern.
-	allMatches, err := resolveSkillsByPatterns(args)
+	matchers, err := compilePatterns(patterns)
 	if err != nil {
 		return err
+	}
+	allLiteral := len(matchers) > 0
+	for _, m := range matchers {
+		if !m.IsLiteral() {
+			allLiteral = false
+			break
+		}
+	}
+	allMatches, err := resolveSkillsByPatterns(patterns)
+	if err != nil {
+		return err
+	}
+	if allLiteral && len(allMatches) == 0 {
+		// Fall back to the direct filesystem scan so single-literal
+		// global apply keeps working even if the registry hasn't been
+		// refreshed for a freshly-written repo skill.
+		for _, p := range patterns {
+			direct, directErr := resolveSingleLiteralSkill(p)
+			if directErr != nil {
+				return directErr
+			}
+			allMatches = append(allMatches, direct...)
+		}
 	}
 	if len(allMatches) == 0 {
 		return nil

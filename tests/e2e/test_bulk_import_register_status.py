@@ -71,7 +71,7 @@ Use this skill in tests.
         )
         assert result.success, f"register failed: {result.stderr}\n{result.stdout}"
 
-        result = self.cmd.run("validate", ["legacy-skill", "--fix"], cwd=str(self.project_dir))
+        result = self.cmd.run("validate", ["--pattern", "legacy-skill", "--fix"], cwd=str(self.project_dir))
         assert result.success, f"validate --fix failed: {result.stderr}\n{result.stdout}"
         assert "备份文件" in result.stdout
 

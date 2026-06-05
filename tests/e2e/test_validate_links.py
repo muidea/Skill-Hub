@@ -59,7 +59,7 @@ Report [missing doc](missing.md).
 
         broken_result = self.cmd.run(
             "validate",
-            ["link-skill", "--links", "--json"],
+            ["--pattern", "link-skill", "--links", "--json"],
             cwd=str(self.project_dir),
             env=self.env,
         )

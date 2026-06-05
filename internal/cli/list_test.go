@@ -294,27 +294,3 @@ func strContains(s, substr string) bool {
 	}
 	return false
 }
-
-func TestHasWildcard(t *testing.T) {
-	tests := []struct {
-		in   string
-		want bool
-	}{
-		{"", false},
-		{"literal", false},
-		{"path/with/slashes", false},
-		{"magic*", true},
-		{"*", true},
-		{"**", true},
-		{"a?b", true},
-		{"[abc]", true},
-		{"a*b?c[d]", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.in, func(t *testing.T) {
-			if got := hasWildcard(tt.in); got != tt.want {
-				t.Errorf("hasWildcard(%q) = %v, want %v", tt.in, got, tt.want)
-			}
-		})
-	}
-}

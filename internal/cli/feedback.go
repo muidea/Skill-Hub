@@ -26,7 +26,7 @@ var (
 )
 
 var feedbackCmd = &cobra.Command{
-	Use:   "feedback [pattern...]",
+	Use:   "feedback --all | --pattern ...",
 	Short: "将项目工作区技能修改内容更新至到本地仓库",
 	Long: `将项目工作区本地的技能修改同步回本地技能仓库。
 
@@ -39,31 +39,33 @@ var feedbackCmd = &cobra.Command{
 使用 --dry-run 参数演习模式，仅显示将要同步的差异。
 使用 --force 参数强制更新，即使有冲突也继续执行。
 
-Pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
+--pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
   *        匹配零或多个任意字符
   ?        匹配恰好一个任意字符
   **       匹配全部
-单字面量参数仍按精确 ID 处理；多参数或含通配符时按 pattern 批量解析。
+
+输入形式（必须二选一）：
+  --all                 反馈当前项目状态中登记的全部技能
+  --pattern '<glob>'    反馈匹配 pattern 的技能（可重复）
+
 未命中任何技能时静默通过。`,
-	Args: func(cmd *cobra.Command, args []string) error {
-		all, _ := cmd.Flags().GetBool("all")
-		if all {
-			return cobra.NoArgs(cmd, args)
-		}
-		if len(args) < 1 {
-			return cobra.ExactArgs(1)(cmd, args)
-		}
-		return nil
-	},
+	Args:              rejectPositionalPattern,
 	ValidArgsFunction: completeEnabledSkillIDsForCwd,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		patterns, err := readPatternFlag(cmd)
+		if err != nil {
+			return err
+		}
 		if feedbackAll {
+			if len(patterns) > 0 {
+				return errors.NewWithCodef("feedback", errors.ErrInvalidInput, "--all and --pattern are mutually exclusive")
+			}
 			return runFeedbackAll()
 		}
-		if len(args) == 1 && !hasWildcard(args[0]) {
-			return runFeedback(args[0])
+		if len(patterns) == 0 {
+			return errors.NewWithCodef("feedback", errors.ErrInvalidInput, "specify --all or --pattern '<id-or-glob>'")
 		}
-		return runFeedbackByPatterns(args)
+		return runFeedbackByPatterns(patterns)
 	},
 }
 
@@ -72,6 +74,7 @@ func init() {
 	feedbackCmd.Flags().BoolVar(&feedbackForce, "force", false, "强制更新，即使有冲突也继续执行")
 	feedbackCmd.Flags().BoolVar(&feedbackAll, "all", false, "反馈当前项目状态中登记的全部技能")
 	feedbackCmd.Flags().BoolVar(&feedbackJSON, "json", false, "以JSON格式输出反馈结果")
+	feedbackCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。值不会被 shell 展开。")
 }
 
 func runFeedback(skillID string) error {
@@ -359,8 +362,47 @@ func runFeedbackByPatterns(patterns []string) error {
 	if !feedbackForce && !feedbackDryRun {
 		return errors.NewWithCode("runFeedbackByPatterns", errors.ErrInvalidInput, "批量反馈需要 --force，或使用 --dry-run 预览")
 	}
-	if _, err := compilePatterns(patterns); err != nil {
+	matchers, err := compilePatterns(patterns)
+	if err != nil {
 		return err
+	}
+	// When every pattern is a literal ID (no wildcards / **), preserve
+	// the v0.8.12 single-ID semantics: each ID is feedback'd directly
+	// from the project workspace, even if the skill is not yet in any
+	// repo. This is the only way the common "create + feedback"
+	// workflow continues to work after the --pattern migration.
+	allLiteral := len(matchers) > 0
+	for _, m := range matchers {
+		if !m.IsLiteral() {
+			allLiteral = false
+			break
+		}
+	}
+	if allLiteral {
+		ids := make([]string, 0, len(patterns))
+		seen := make(map[string]struct{}, len(patterns))
+		for _, p := range patterns {
+			if _, ok := seen[p]; ok {
+				continue
+			}
+			seen[p] = struct{}{}
+			ids = append(ids, p)
+		}
+		summary, err := runFeedbackStructured(ids, false)
+		if feedbackJSON {
+			if writeErr := writeJSON(summary); writeErr != nil {
+				return writeErr
+			}
+		} else {
+			renderFeedbackSummary(summary)
+		}
+		if err != nil {
+			return err
+		}
+		if summary.Failed > 0 {
+			return errors.NewWithCodef("runFeedbackByPatterns", errors.ErrValidation, "%d 个技能反馈失败", summary.Failed)
+		}
+		return nil
 	}
 	allMatches, err := resolveSkillsByPatterns(patterns)
 	if err != nil {

@@ -111,14 +111,14 @@ This is a test skill for version auto-upgrade testing.
         skill_dir = self._create_skill_with_version(skill_name, "1.0.0")
 
         # First feedback to repository
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Initial feedback failed: {result.stderr}"
 
         # Modify skill content without changing version
         self._modify_skill_content(skill_dir, "First modification")
 
         # Second feedback - should auto-upgrade version
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Second feedback failed: {result.stderr}"
 
         # Verify version was auto-upgraded
@@ -147,7 +147,7 @@ This is a test skill for version auto-upgrade testing.
         skill_dir = self._create_skill_with_version(skill_name, "1.0.0")
 
         # First feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success
 
         expected_versions = ["1.0.1", "1.0.2", "1.0.3"]
@@ -157,7 +157,7 @@ This is a test skill for version auto-upgrade testing.
             self._modify_skill_content(skill_dir, f"Modification {i+1}")
 
             # Feedback
-            result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+            result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
             assert result.success, f"Feedback {i+1} failed: {result.stderr}"
 
             # Check version
@@ -180,7 +180,7 @@ This is a test skill for version auto-upgrade testing.
         skill_dir = self._create_skill_with_version(skill_name, "1.0.0")
 
         # First feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success
 
         # Modify content AND update version manually to 2.0.0
@@ -193,7 +193,7 @@ This is a test skill for version auto-upgrade testing.
         skill_md.write_text(content)
 
         # Feedback - should use user-specified version
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"Feedback failed: {result.stderr}"
 
         # Verify user version was preserved
@@ -233,13 +233,13 @@ This is a test skill for version auto-upgrade testing.
             skill_md.write_text(content)
 
             # First feedback
-            result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+            result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
             assert result.success
 
             # Modify and feedback
             self._modify_skill_content(skill_dir, "Modified")
 
-            result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+            result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
             assert result.success
 
             # Check version
@@ -262,7 +262,7 @@ This is a test skill for version auto-upgrade testing.
         skill_dir = self._create_skill_with_version(skill_name, "1.0.0")
 
         # First feedback - should keep version 1.0.0
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success, f"First feedback failed: {result.stderr}"
 
         # Verify version is still 1.0.0 (no auto-upgrade for new skill)
@@ -283,13 +283,13 @@ This is a test skill for version auto-upgrade testing.
         skill_dir = self._create_skill_with_version(skill_name, "1.0.0")
 
         # First feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success
 
         # Modify and feedback
         self._modify_skill_content(skill_dir, "Test modification")
 
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success
 
         # Check output contains upgrade message
@@ -311,14 +311,14 @@ This is a test skill for version auto-upgrade testing.
         skill_dir = self._create_skill_with_version(skill_name, "1.0.0")
 
         # First feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success
 
         # Modify content
         self._modify_skill_content(skill_dir, "Dry run modification")
 
         # Dry-run feedback
-        result = self.cmd.run("feedback", [skill_name, "--dry-run"], cwd=str(self.project_dir))
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--dry-run"], cwd=str(self.project_dir))
         assert result.success
 
         # Version should still be 1.0.0
@@ -339,14 +339,14 @@ This is a test skill for version auto-upgrade testing.
         skill_dir = self._create_skill_with_version(skill_name, "1.0.0")
 
         # First feedback
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success
 
         # Modify content
         self._modify_skill_content(skill_dir, "Force mode modification")
 
         # Force feedback (no confirmation)
-        result = self.cmd.run("feedback", [skill_name, "--force"], cwd=str(self.project_dir))
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success
 
         # Version should be upgraded
@@ -367,7 +367,7 @@ This is a test skill for version auto-upgrade testing.
         skill_name = "version-compare-1"
         skill_dir = self._create_skill_with_version(skill_name, "1.0.5")
 
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert result.success
 
         # Modify but set version lower than repo (1.0.3)
@@ -377,7 +377,7 @@ This is a test skill for version auto-upgrade testing.
         content = content.replace("version: 1.0.5", "version: 1.0.3")
         skill_md.write_text(content)
 
-        result = self.cmd.run("feedback", [skill_name], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name, "--force"], cwd=str(self.project_dir))
         assert not result.success
         assert "低于默认仓库版本" in (result.stdout + result.stderr)
 
@@ -393,7 +393,7 @@ This is a test skill for version auto-upgrade testing.
         skill_name2 = "version-compare-2"
         skill_dir2 = self._create_skill_with_version(skill_name2, "2.0.0")
 
-        result = self.cmd.run("feedback", [skill_name2], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name2, "--force"], cwd=str(self.project_dir))
         assert result.success
 
         # Modify with higher version (3.0.0)
@@ -403,7 +403,7 @@ This is a test skill for version auto-upgrade testing.
         content2 = content2.replace("version: 2.0.0", "version: 3.0.0")
         skill_md2.write_text(content2)
 
-        result = self.cmd.run("feedback", [skill_name2], cwd=str(self.project_dir), input_text="y\n")
+        result = self.cmd.run("feedback", ["--pattern", skill_name2, "--force"], cwd=str(self.project_dir))
         assert result.success
 
         # Should keep user version 3.0.0

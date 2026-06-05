@@ -15,31 +15,41 @@ import (
 )
 
 var listCmd = &cobra.Command{
-	Use:   "list [pattern...]",
+	Use:   "list [--pattern ...]",
 	Short: "列出可用技能",
 	Long: `显示本地技能仓库中的所有技能，支持按仓库过滤和按 ID pattern 过滤。
 
-Pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
+--pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
   *        匹配零或多个任意字符
   ?        匹配恰好一个任意字符
   **       匹配全部（替代单独使用 '*'）
   [abc]    字符类（Go 语法，否定用 [^abc]）
 
+--pattern 标志由 cobra 解析，不会被 shell 展开；可重复使用以组合多个
+pattern（结果取并集）。
+
 示例：
-  skill-hub list                列出所有技能
-  skill-hub list magic*         列出 ID 以 magic 开头的技能
-  skill-hub list **             列出全部（同不带参数）
-  skill-hub list --repo main    只显示 main 仓库的技能`,
+  skill-hub list                    列出所有技能
+  skill-hub list --pattern 'magic*'  列出 ID 以 magic 开头的技能
+  skill-hub list --pattern 'magic*' --pattern 'git-*'  合并多个 pattern
+  skill-hub list --pattern '**'      列出全部（同不带参数）
+  skill-hub list --repo main         只显示 main 仓库的技能`,
+	Args: rejectPositionalPattern,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		repoFilters, _ := cmd.Flags().GetStringSlice("repo")
-		return runList(verbose, repoFilters, args)
+		patterns, err := readPatternFlag(cmd)
+		if err != nil {
+			return err
+		}
+		return runList(verbose, repoFilters, patterns)
 	},
 }
 
 func init() {
 	listCmd.Flags().Bool("verbose", false, "显示详细信息，包括技能描述、版本、适用说明等")
 	listCmd.Flags().StringSlice("repo", []string{}, "按仓库名称过滤技能列表（可多次使用指定多个仓库）")
+	listCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复），如 --pattern 'magic*' --pattern 'git-*'。值不会被 shell 展开。")
 }
 
 func runList(verbose bool, repoFilters []string, patterns []string) error {

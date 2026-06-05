@@ -34,7 +34,7 @@ metadata:
         )
 
     def _status_item(self, skill_id: str):
-        result = self.cmd.run("status", [skill_id, "--json"], cwd=str(self.project_dir))
+        result = self.cmd.run("status", ["--pattern", skill_id, "--json"], cwd=str(self.project_dir))
         assert result.success, f"status --json failed: {result.stderr}\n{result.stdout}"
         data = json.loads(result.stdout)
         assert data["skill_count"] == 1
@@ -49,10 +49,10 @@ metadata:
 
         self._write_repo_skill(skill_id, "1.0.0", "repo-v1")
 
-        use_result = self.cmd.run("use", [skill_id], cwd=str(self.project_dir))
+        use_result = self.cmd.run("use", ["--pattern", skill_id], cwd=str(self.project_dir))
         assert use_result.success, f"use failed: {use_result.stderr}\n{use_result.stdout}"
 
-        apply_initial = self.cmd.run("apply", [skill_id], cwd=str(self.project_dir))
+        apply_initial = self.cmd.run("apply", ["--pattern", skill_id], cwd=str(self.project_dir))
         assert apply_initial.success, f"initial apply failed: {apply_initial.stderr}\n{apply_initial.stdout}"
 
         project_skill_md = self.project_skills_dir / skill_id / "SKILL.md"
@@ -63,7 +63,7 @@ metadata:
         before = self._status_item(skill_id)
         assert before["status"] == "Outdated", before
 
-        apply_refresh = self.cmd.run("apply", [skill_id], cwd=str(self.project_dir))
+        apply_refresh = self.cmd.run("apply", ["--pattern", skill_id], cwd=str(self.project_dir))
         assert apply_refresh.success, f"refresh apply failed: {apply_refresh.stderr}\n{apply_refresh.stdout}"
         assert "成功应用技能" in apply_refresh.stdout
 
@@ -84,10 +84,10 @@ metadata:
 
         self._write_repo_skill(skill_id, "1.0.0", "repo-v1")
 
-        use_result = self.cmd.run("use", [skill_id], cwd=str(self.project_dir))
+        use_result = self.cmd.run("use", ["--pattern", skill_id], cwd=str(self.project_dir))
         assert use_result.success, f"use failed: {use_result.stderr}\n{use_result.stdout}"
 
-        apply_initial = self.cmd.run("apply", [skill_id], cwd=str(self.project_dir))
+        apply_initial = self.cmd.run("apply", ["--pattern", skill_id], cwd=str(self.project_dir))
         assert apply_initial.success, f"initial apply failed: {apply_initial.stderr}\n{apply_initial.stdout}"
 
         self._write_repo_skill(skill_id, "1.1.0", "repo-v2")
@@ -103,11 +103,11 @@ metadata:
         assert status["local_version"] == "1.0.0"
         assert status["repo_version"] == "1.1.0"
 
-        dry_run = self.cmd.run("feedback", [skill_id, "--dry-run"], cwd=str(self.project_dir))
+        dry_run = self.cmd.run("feedback", ["--pattern", skill_id, "--dry-run"], cwd=str(self.project_dir))
         assert not dry_run.success
         assert "低于默认仓库版本" in (dry_run.stderr + dry_run.stdout)
 
-        forced = self.cmd.run("feedback", [skill_id, "--force"], cwd=str(self.project_dir))
+        forced = self.cmd.run("feedback", ["--pattern", skill_id, "--force"], cwd=str(self.project_dir))
         assert not forced.success
         assert "skill-hub apply" in (forced.stderr + forced.stdout)
 

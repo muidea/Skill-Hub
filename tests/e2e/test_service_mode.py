@@ -102,7 +102,7 @@ class TestServiceMode:
 
         feedback_result = self.cmd.run(
             "feedback",
-            [skill_name, "--force"],
+            ["--pattern", skill_name, "--force"],
             cwd=str(self.project_dir),
             env=self.service_env,
         )
@@ -439,7 +439,7 @@ class TestServiceMode:
             bridge_env["SKILL_HUB_SERVICE_URL"] = service.base_url
             bridge_env["SKILL_HUB_SERVICE_SECRET_KEY"] = "write-secret"
 
-            use_result = self.cmd.run("use", ["service-skill"], cwd=str(self.consumer_project_dir), env=bridge_env)
+            use_result = self.cmd.run("use", ["--pattern", "service-skill"], cwd=str(self.consumer_project_dir), env=bridge_env)
             assert use_result.success, use_result.stderr
             assert "已成功标记为使用" in use_result.stdout
 
@@ -460,12 +460,12 @@ class TestServiceMode:
 
             feedback_result = self.cmd.run(
                 "feedback",
-                ["service-skill", "--force"],
+                ["--pattern", "service-skill", "--force"],
                 cwd=str(self.consumer_project_dir),
                 env=bridge_env,
             )
             assert feedback_result.success, feedback_result.stderr
-            assert "反馈完成" in feedback_result.stdout
+            assert "applied" in feedback_result.stdout.lower() or "反馈完成" in feedback_result.stdout
 
             synced_extra_file = repo_skill_dir / "notes.md"
             assert synced_extra_file.exists()
@@ -560,7 +560,7 @@ Read [service doc](docs/service.md).
 
             validate_result = self.cmd.run(
                 "validate",
-                ["service-register", "--links", "--json"],
+                ["--pattern", "service-register", "--links", "--json"],
                 cwd=str(self.project_dir),
                 env=bridge_env,
             )
