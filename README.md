@@ -79,6 +79,8 @@ skill-hub feedback --pattern git-expert --force
 skill-hub push --dry-run --json
 ```
 
+`feedback` 只用于标准项目工作区 `.agents/skills/<id>`。发布包内置或其他批量 skill 目录使用 `import --archive --archive-only` 归档，不要手工复制到 `~/.skill-hub/repositories/.../skills`。
+
 如果 `status` 显示 `ModifiedAgainstOutdatedRepo`，先执行 `skill-hub apply --pattern <id>` 刷新到仓库高版本，再把必要修改迁移到新版本后反馈。
 
 ## 本机全局 Skill
@@ -115,6 +117,8 @@ skill-hub validate --pattern existing-skill --fix
 
 ```bash
 skill-hub import .agents/skills --fix-frontmatter --archive --force
+skill-hub import agent-skills --archive --archive-only --force
+skill-hub repo rebuild-index
 ```
 
 检查重复副本和路径可移植性：

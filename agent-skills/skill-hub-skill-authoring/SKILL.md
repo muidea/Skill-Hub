@@ -5,7 +5,7 @@ compatibility: "Designed for Claude Code, Cursor, OpenCode, and other AI coding 
 metadata:
   author: skill-hub Team
   tags: skill-hub,skill-authoring,skills,validation,feedback
-  version: 1.0.3
+  version: 1.0.4
 ---
 
 # Skill Hub Skill Authoring
@@ -34,6 +34,8 @@ skill-hub feedback --pattern <skill-id> --dry-run
 - The required entry point is `.agents/skills/<skill-id>/SKILL.md`.
 - The default skill repository under `~/.skill-hub/repositories/<default>/` is the archive source for reusable skills.
 - `feedback` copies project-local skill content back to the local default skill repository.
+- `import <skills-dir> --archive --archive-only --force` is the archive path for existing skill directories outside the standard project workspace, including release-bundled `agent-skills/*`, when they should not be registered in the current project state.
+- `repo rebuild-index [repo]` repairs stale `registry.json` indexes; do not use manual directory copies as an archive workflow.
 - `push` publishes local repository changes to a remote and must only run after explicit user approval.
 - Compatibility metadata is descriptive. Do not create target-specific branches or write `preferred_target`.
 
@@ -114,7 +116,9 @@ skill-hub register <skill-id>
 Import skills from an existing directory when migrating content:
 
 ```bash
-skill-hub import --path <dir>
+skill-hub import <skills-dir>
+skill-hub import <skills-dir> --archive --force
+skill-hub import <skills-dir> --archive --archive-only --force
 ```
 
 Use `--skip-validate` only when intentionally staging invalid content for later repair.
@@ -157,6 +161,12 @@ skill-hub sync-copies --canonical .agents/skills --scope .
 
 ## Archive To The Local Skill Repository
 
+Use the correct archive entry point for the source location:
+
+- Project workspace `.agents/skills/<skill-id>`: use `feedback`.
+- Existing or release-bundled skill directory such as `agent-skills/<skill-id>`: use `import <skills-dir> --archive --archive-only --force`.
+- Stale repository index after abnormal local edits: use `repo rebuild-index [repo]`.
+
 Preview the archive diff:
 
 ```bash
@@ -173,6 +183,13 @@ For many skills:
 
 ```bash
 skill-hub feedback --all --force --json
+```
+
+For bundled or batch directories:
+
+```bash
+skill-hub import agent-skills --archive --archive-only --force
+skill-hub repo rebuild-index
 ```
 
 After feedback, confirm the project and repository copies are synced:

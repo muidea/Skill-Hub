@@ -5,7 +5,7 @@ compatibility: "Designed for Claude Code, Cursor, OpenCode, and other AI coding 
 metadata:
   author: skill-hub Team
   tags: skill-hub,skills,workflow,router
-  version: 1.1.6
+  version: 1.1.7
 ---
 
 # Skill Hub Workflow Router
@@ -53,6 +53,8 @@ Use `skill-hub-project-usage` when the user wants to:
 - `status --global` checks global desired state, source repository content, agent directories, and Skill-Hub manifests.
 - `remove --global` removes global desired state and only deletes Skill-Hub managed agent skill directories unless `--force` is explicit.
 - `feedback` writes project-local skill changes to the local default skill repository.
+- `import <skills-dir> --archive --archive-only --force` archives release-bundled or batch skill directories such as `agent-skills/*` without registering them in the current project state.
+- `repo rebuild-index [repo]` repairs repository indexes; it is not a skill archive entry point.
 - `push` is the explicit remote publication step. Never run it automatically.
 - `pull` and `repo sync` synchronize remote repositories into local repositories; they are not remote publication.
 - `upgrade` updates the skill-hub binary from GitHub Releases; it is not a skill repository sync and does not publish local skill changes.
@@ -68,6 +70,13 @@ skill-hub create <skill-id>
 skill-hub validate --pattern <skill-id> --links
 skill-hub feedback --pattern <skill-id> --dry-run
 skill-hub feedback --pattern <skill-id> --force
+```
+
+For release-bundled or batch skill directories:
+
+```bash
+skill-hub import agent-skills --archive --archive-only --force
+skill-hub repo rebuild-index
 ```
 
 For consuming managed skills in a project:

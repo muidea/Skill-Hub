@@ -68,7 +68,7 @@ ${OPENCODE_HOME:-$HOME/.config/opencode}/skills
 |------|----------|------|
 | `create` | 创建新技能模板 | `skill-hub create <id>` |
 | `register` | 登记已有项目本地技能 | `skill-hub register <id> [--skip-validate]` |
-| `import` | 批量登记、验证并可选归档已有技能 | `skill-hub import <skills-dir> [--fix-frontmatter] [--archive] [--force] [--dry-run] [--fail-fast]` |
+| `import` | 批量登记、验证并可选归档已有技能 | `skill-hub import <skills-dir> [--fix-frontmatter] [--archive] [--archive-only] [--force] [--dry-run] [--fail-fast]` |
 | `dedupe` | 检测嵌套项目中的重复技能副本 | `skill-hub dedupe <scope> [--canonical <dir>] [--strategy newest|canonical|fail-on-conflict] [--json]` |
 | `sync-copies` | 从 canonical 目录同步同 ID 技能副本 | `skill-hub sync-copies --canonical <dir> [--scope <dir>] [--dry-run] [--no-backup] [--json]` |
 | `lint` | 审计项目技能内容 | `skill-hub lint [scope] --paths [--project-root <dir>] [--fix] [--dry-run] [--no-backup] [--json]` |
@@ -105,6 +105,7 @@ ${OPENCODE_HOME:-$HOME/.config/opencode}/skills
 | `repo disable` | 禁用仓库 | `skill-hub repo disable <name>` |
 | `repo default` | 设置默认仓库 | `skill-hub repo default <name>` |
 | `repo sync` | 同步仓库 | `skill-hub repo sync [name] [--all] [--json]` |
+| `repo rebuild-index` | 重建仓库索引 | `skill-hub repo rebuild-index [name] [--json]` |
 
 ### 3.7. 本地状态维护
 | 命令 | 功能描述 | 语法 |
@@ -345,19 +346,20 @@ skill-hub register legacy-skill --skip-validate
 
 ### 4.5.2 import - 批量导入已有技能
 
-**语法**: `skill-hub import <skills-dir> [--fix-frontmatter] [--archive] [--force] [--dry-run] [--fail-fast]`
+**语法**: `skill-hub import <skills-dir> [--fix-frontmatter] [--archive] [--archive-only] [--force] [--dry-run] [--fail-fast]`
 
 **参数**:
 - `skills-dir` (必需): 包含 `<id>/SKILL.md` 子目录的技能目录，典型值为 `.agents/skills`。
 - `--fix-frontmatter` (可选): 导入前修复缺失或不完整的 frontmatter，修改前创建 `SKILL.md.bak.<timestamp>`。
-- `--archive` (可选): 验证通过后归档到默认仓库。
+- `--archive` (可选): 验证通过后归档到默认仓库，并在命令结束时刷新默认仓库索引。
+- `--archive-only` (可选): 仅归档到默认仓库，不登记当前项目状态；必须与 `--archive` 一起使用。适用于发布包内置目录如 `agent-skills`。
 - `--force` (可选): 批量流程不进行交互确认；不会自动删除源技能。
 - `--dry-run` (可选): 只输出将要登记、修复、归档的动作。
 - `--fail-fast` (可选): 遇到首个失败技能时停止，否则默认继续处理并在最后汇总失败项。
 
 **功能描述**:
 
-扫描 `skills-dir/*/SKILL.md`，逐个执行 frontmatter 修复（可选）、验证、项目状态登记，并在指定 `--archive` 时归档到默认仓库。命令结束时输出固定摘要：
+扫描 `skills-dir/*/SKILL.md`，逐个执行 frontmatter 修复（可选）、验证、项目状态登记，并在指定 `--archive` 时归档到默认仓库。`--archive-only` 会跳过项目状态登记，只执行验证与归档。即使某个 skill 内容与默认仓库一致并计入 `unchanged`，也会刷新默认仓库 `registry.json`，避免目录内容和索引版本不一致。命令结束时输出固定摘要：
 
 - `discovered`
 - `registered`
@@ -373,6 +375,7 @@ skill-hub register legacy-skill --skip-validate
 **示例**:
 ```bash
 skill-hub import .agents/skills --fix-frontmatter --archive --force
+skill-hub import agent-skills --archive --archive-only --force
 skill-hub import .agents/skills --dry-run
 ```
 
@@ -1256,6 +1259,27 @@ skill-hub repo sync community
 skill-hub repo sync --json
 ```
 
+### 8.8 repo rebuild-index - 重建仓库索引
+
+**语法**: `skill-hub repo rebuild-index [name] [--json]`
+
+**参数**:
+- `name` (可选): 要重建索引的仓库名称。如未提供，重建默认仓库。
+
+**选项**:
+- `--json`: 输出机器可读结果，包含 `repo_name` 和 `status`。
+
+**功能描述**:
+扫描指定仓库的 `skills` 目录并重建该仓库的 `registry.json`。当重建默认仓库时，会同步刷新 `~/.skill-hub/registry.json` 兼容索引。
+
+该命令用于修复索引异常，不替代 skill 归档入口。标准项目工作区改动仍应使用 `feedback`，发布包内置或批量 skill 目录仍应使用 `import --archive --archive-only`，不要手工复制到 `~/.skill-hub/repositories/.../skills`。
+
+**示例**:
+```bash
+skill-hub repo rebuild-index
+skill-hub repo rebuild-index skills-repo --json
+```
+
 ## 9. 服务模式与 CLI 交互说明
 
 当前 `skill-hub` 已支持双运行模式：
@@ -1272,7 +1296,7 @@ skill-hub repo sync --json
 
 当前已桥接的命令：
 
-- `repo *`
+- `repo add/list/remove/sync/enable/disable/default`
 - `list`
 - `search`
 - `status`

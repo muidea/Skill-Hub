@@ -5,7 +5,7 @@ compatibility: "Designed for Claude Code, Cursor, OpenCode, and other AI coding 
 metadata:
   author: skill-hub Team
   tags: skill-hub,project-usage,skills,apply,use
-  version: 1.0.5
+  version: 1.0.6
 ---
 
 # Skill Hub Project Usage
@@ -25,6 +25,8 @@ This is a consumer workflow. If the task is to create or maintain the reusable s
 - `status --global` checks global desired state, source repository content, target agent directories, and `.skill-hub-manifest.json`.
 - `remove --global` removes global desired state and only deletes Skill-Hub managed global skill directories unless `--force` is explicit.
 - `feedback` can archive project-local improvements back to the local default skill repository.
+- `feedback` only archives standard project workspace skills under `.agents/skills/<skill-id>`.
+- Existing or release-bundled skill directories such as `agent-skills/*` must be archived with `skill-hub import <skills-dir> --archive --archive-only --force`.
 - `push` is the only remote publication step and must be explicit.
 - `upgrade` updates the installed skill-hub binary and bundled workflow skills; it does not sync skill repositories or publish local changes.
 - Discovery comes before selection: run `list` and/or `search` before `use`, and only run `use` after confirming a suitable managed skill exists.
@@ -164,6 +166,13 @@ For all enabled skills:
 
 ```bash
 skill-hub feedback --all --force --json
+```
+
+For existing or release-bundled skill directories outside `.agents/skills`, do not copy files into the repository manually:
+
+```bash
+skill-hub import agent-skills --archive --archive-only --force
+skill-hub repo rebuild-index
 ```
 
 `feedback` writes to the local default skill repository only. It does not push to a remote.

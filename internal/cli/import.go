@@ -24,6 +24,7 @@ var importCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		opts := projectlifecycleservice.ImportOptions{
 			Archive:        mustGetBoolFlag(cmd, "archive"),
+			ArchiveOnly:    mustGetBoolFlag(cmd, "archive-only"),
 			Force:          mustGetBoolFlag(cmd, "force"),
 			DryRun:         mustGetBoolFlag(cmd, "dry-run"),
 			FailFast:       mustGetBoolFlag(cmd, "fail-fast"),
@@ -35,6 +36,7 @@ var importCmd = &cobra.Command{
 
 func init() {
 	importCmd.Flags().Bool("archive", false, "验证通过后归档到默认仓库")
+	importCmd.Flags().Bool("archive-only", false, "仅归档到默认仓库，不登记当前项目状态；需与 --archive 一起使用")
 	importCmd.Flags().Bool("force", false, "批量流程中跳过交互确认（当前导入流程默认不覆盖源技能内容）")
 	importCmd.Flags().Bool("dry-run", false, "演习模式，仅输出将要执行的操作")
 	importCmd.Flags().Bool("fail-fast", false, "遇到首个失败技能时立即停止")

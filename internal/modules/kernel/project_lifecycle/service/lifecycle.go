@@ -33,6 +33,7 @@ type RegisterResult struct {
 
 type ImportOptions struct {
 	Archive        bool `json:"archive"`
+	ArchiveOnly    bool `json:"archive_only"`
 	Force          bool `json:"force"`
 	DryRun         bool `json:"dry_run"`
 	FailFast       bool `json:"fail_fast"`
@@ -142,6 +143,9 @@ func (p *ProjectLifecycle) Import(projectPath, skillsDir string, opts ImportOpti
 	if projectPath == "" {
 		return nil, errors.NewWithCode("Import", errors.ErrInvalidInput, "项目路径不能为空")
 	}
+	if opts.ArchiveOnly && !opts.Archive {
+		return nil, errors.NewWithCode("Import", errors.ErrInvalidInput, "--archive-only requires --archive")
+	}
 
 	absProjectPath, err := filepath.Abs(projectPath)
 	if err != nil {
@@ -182,6 +186,15 @@ func (p *ProjectLifecycle) Import(projectPath, skillsDir string, opts ImportOpti
 		err := p.importOneSkill(projectState, stateManager, item, opts, summary)
 		if err != nil && opts.FailFast {
 			return summary, err
+		}
+	}
+	if opts.Archive && !opts.DryRun && summary.Valid > 0 {
+		defaultRepo, err := p.repositorySvc.Service().DefaultRepository()
+		if err != nil {
+			return summary, errors.Wrap(err, "Import: 获取默认仓库失败")
+		}
+		if err := p.repositorySvc.Service().RebuildRepositoryIndex(defaultRepo.Name); err != nil {
+			return summary, errors.Wrap(err, "Import: 重建默认仓库索引失败")
 		}
 	}
 	if summary.Failed > 0 {
@@ -232,8 +245,11 @@ func (p *ProjectLifecycle) importOneSkill(projectState *spec.ProjectState, state
 	}
 	summary.Valid++
 
-	_, alreadyRegistered := projectState.Skills[item.ID]
-	if !alreadyRegistered {
+	alreadyRegistered := false
+	if !opts.ArchiveOnly {
+		_, alreadyRegistered = projectState.Skills[item.ID]
+	}
+	if !opts.ArchiveOnly && !alreadyRegistered {
 		if !opts.DryRun {
 			existing := spec.SkillVars{
 				SkillID:   item.ID,

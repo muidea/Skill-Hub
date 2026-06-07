@@ -78,6 +78,18 @@ var repoSyncCmd = &cobra.Command{
 	},
 }
 
+var repoRebuildIndexCmd = &cobra.Command{
+	Use:               "rebuild-index [name]",
+	Short:             "重建仓库索引",
+	Long:              `扫描指定仓库的 skills 目录并重建 registry.json。未指定仓库时重建默认仓库索引。`,
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeRepoNames,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		jsonOutput, _ := cmd.Flags().GetBool("json")
+		return runRepoRebuildIndex(args, jsonOutput)
+	},
+}
+
 var repoEnableCmd = &cobra.Command{
 	Use:               "enable <name>",
 	Short:             "启用仓库",
@@ -123,12 +135,14 @@ func init() {
 
 	repoSyncCmd.Flags().Bool("all", false, "同步所有仓库（包括禁用的）")
 	repoSyncCmd.Flags().Bool("json", false, "以JSON格式输出同步摘要")
+	repoRebuildIndexCmd.Flags().Bool("json", false, "以JSON格式输出重建结果")
 
 	// 添加子命令
 	repoCmd.AddCommand(repoAddCmd)
 	repoCmd.AddCommand(repoListCmd)
 	repoCmd.AddCommand(repoRemoveCmd)
 	repoCmd.AddCommand(repoSyncCmd)
+	repoCmd.AddCommand(repoRebuildIndexCmd)
 	repoCmd.AddCommand(repoEnableCmd)
 	repoCmd.AddCommand(repoDisableCmd)
 	repoCmd.AddCommand(repoDefaultCmd)
@@ -263,6 +277,11 @@ type repoSyncItem struct {
 	Error   string `json:"error,omitempty"`
 }
 
+type repoRebuildIndexResult struct {
+	RepoName string `json:"repo_name"`
+	Status   string `json:"status"`
+}
+
 // runRepoSync 执行同步仓库操作
 func runRepoSync(args []string, syncAll bool, jsonOutput bool) error {
 	if jsonOutput {
@@ -349,6 +368,30 @@ func runRepoSync(args []string, syncAll bool, jsonOutput bool) error {
 		}
 	}
 
+	return nil
+}
+
+func runRepoRebuildIndex(args []string, jsonOutput bool) error {
+	repoName := ""
+	if len(args) > 0 {
+		repoName = args[0]
+	} else {
+		defaultRepo, err := defaultRepository()
+		if err != nil {
+			return errors.Wrap(err, "获取默认仓库失败")
+		}
+		repoName = defaultRepo.Name
+	}
+
+	if err := rebuildRepositoryIndex(repoName); err != nil {
+		return errors.Wrapf(err, "重建仓库 '%s' 索引失败", repoName)
+	}
+
+	result := repoRebuildIndexResult{RepoName: repoName, Status: "rebuilt"}
+	if jsonOutput {
+		return writeJSON(result)
+	}
+	fmt.Printf("✅ 仓库 '%s' 索引已重建\n", repoName)
 	return nil
 }
 
