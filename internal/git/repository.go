@@ -127,8 +127,18 @@ func NewSkillsRepository() (*Repository, error) {
 func (r *Repository) SetRemote(url string) error {
 	r.remoteURL = url
 
-	// 删除现有远程（如果存在）
-	_ = r.repo.DeleteRemote(r.remoteName)
+	if _, err := r.repo.Remote(r.remoteName); err == nil {
+		cmd := exec.Command("git", "-C", r.path, "remote", "set-url", r.remoteName, url)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("更新远程仓库URL失败: %s: %w", strings.TrimSpace(string(output)), err)
+		}
+		repo, err := git.PlainOpen(r.path)
+		if err != nil {
+			return fmt.Errorf("重新打开Git仓库失败: %w", err)
+		}
+		r.repo = repo
+		return nil
+	}
 
 	// 添加新远程
 	_, err := r.repo.CreateRemote(&gitconfig.RemoteConfig{

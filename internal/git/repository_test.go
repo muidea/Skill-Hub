@@ -72,6 +72,34 @@ func TestGetSSHAuth(t *testing.T) {
 	}
 }
 
+func TestRepositorySetRemoteUpdatesExistingOrigin(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoDir := filepath.Join(tmpDir, "repo")
+	firstRemote := filepath.Join(tmpDir, "first.git")
+	secondRemote := filepath.Join(tmpDir, "second.git")
+
+	runGitCommand(t, tmpDir, "init", "--bare", firstRemote)
+	runGitCommand(t, tmpDir, "init", "--bare", secondRemote)
+	runGitCommand(t, tmpDir, "init", repoDir)
+	runGitCommand(t, repoDir, "remote", "add", "origin", firstRemote)
+
+	repo, err := NewRepository(repoDir)
+	if err != nil {
+		t.Fatalf("NewRepository() error = %v", err)
+	}
+	if err := repo.SetRemote(secondRemote); err != nil {
+		t.Fatalf("SetRemote() error = %v", err)
+	}
+
+	remotes, err := repo.GetRemote()
+	if err != nil {
+		t.Fatalf("GetRemote() error = %v", err)
+	}
+	if len(remotes) != 1 || remotes[0] != secondRemote {
+		t.Fatalf("remote URLs = %v, want [%s]", remotes, secondRemote)
+	}
+}
+
 func TestRepositoryCheckRemoteUpdates(t *testing.T) {
 	tmpDir := t.TempDir()
 	remoteDir := filepath.Join(tmpDir, "remote.git")
