@@ -5,7 +5,7 @@ compatibility: "Designed for Claude Code, Cursor, OpenCode, and other AI coding 
 metadata:
   author: skill-hub Team
   tags: skill-hub,project-usage,skills,apply,use
-  version: 1.0.4
+  version: 1.0.5
 ---
 
 # Skill Hub Project Usage
@@ -60,16 +60,16 @@ skill-hub search <keyword>
 Enable and apply only after selecting a suitable skill from `list` or `search` output:
 
 ```bash
-skill-hub use <skill-id>
+skill-hub use --pattern <skill-id>
 skill-hub apply
 skill-hub status
 ```
 
-Refresh one enabled project skill when `status <skill-id>` shows `Outdated`:
+Refresh one enabled project skill when `status --pattern <skill-id>` shows `Outdated`:
 
 ```bash
-skill-hub apply <skill-id>
-skill-hub status <skill-id>
+skill-hub apply --pattern <skill-id>
+skill-hub status --pattern <skill-id>
 ```
 
 Use dry-run if the user wants to preview file changes:
@@ -92,14 +92,14 @@ skill-hub search <keyword>
 Enable globally only after selecting a suitable managed skill:
 
 ```bash
-skill-hub use <skill-id> --global --agent codex
+skill-hub use --pattern <skill-id> --global --agent codex
 ```
 
 Inspect and preview before writing agent global directories:
 
 ```bash
 skill-hub status --global
-skill-hub status <skill-id> --global --agent codex
+skill-hub status --pattern <skill-id> --global --agent codex
 skill-hub apply --global --dry-run
 ```
 
@@ -115,7 +115,7 @@ Remove global usage when requested:
 skill-hub remove <skill-id> --global --agent codex
 ```
 
-Use `--agent codex`, `--agent opencode`, or `--agent claude` to scope global operations. If no agent is specified, skill-hub uses detected or configured agents. If `status --global <skill-id>` or `apply <skill-id> --global` reports `SKILL_NOT_FOUND`, the skill is not globally enabled for the requested agent; do not treat an empty result as success.
+Use `--agent codex`, `--agent opencode`, or `--agent claude` to scope global operations. If no agent is specified, skill-hub uses detected or configured agents. If `status --pattern <skill-id> --global` or `apply --pattern <skill-id> --global` reports `SKILL_NOT_FOUND`, the skill is not globally enabled for the requested agent; do not treat an empty result as success.
 
 Do not use `--force` unless the user explicitly accepts overwriting a same-name global skill directory that is not managed by Skill-Hub. `--force` creates a backup before replacing conflicts.
 
@@ -130,7 +130,7 @@ skill-hub search <keyword>
 
 Use `list` to see the available managed skill inventory. Use `search` with project, domain, language, framework, tool, or workflow keywords to narrow candidates.
 
-Only run `skill-hub use <skill-id>` or `skill-hub use <skill-id> --global` when a listed or searched skill clearly matches the current task. If no suitable skill exists, tell the user that no managed skill matched and continue without `use`; do not guess an unrelated skill ID.
+Only run `skill-hub use --pattern <skill-id>` or `skill-hub use --pattern <skill-id> --global` when a listed or searched skill clearly matches the current task. If no suitable skill exists, tell the user that no managed skill matched and continue without `use`; do not guess an unrelated skill ID.
 
 When multiple repositories contain the same skill ID, choose based on project intent and repository source. Ask the user when the right repository is ambiguous.
 
@@ -149,15 +149,15 @@ Applied skill files live under:
 After applying, inspect status:
 
 ```bash
-skill-hub status <skill-id>
-skill-hub status <skill-id> --json
+skill-hub status --pattern <skill-id>
+skill-hub status --pattern <skill-id> --json
 ```
 
 If the user edits an applied skill in the project and wants to keep those improvements, preview and archive them:
 
 ```bash
-skill-hub feedback <skill-id> --dry-run
-skill-hub feedback <skill-id> --force
+skill-hub feedback --pattern <skill-id> --dry-run
+skill-hub feedback --pattern <skill-id> --force
 ```
 
 For all enabled skills:

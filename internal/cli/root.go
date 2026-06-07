@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	apperrors "github.com/muidea/skill-hub/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -26,8 +27,9 @@ func init() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "skill-hub",
-	Short: "skill-hub - AI技能生命周期管理工具",
+	Use:           "skill-hub",
+	Short:         "skill-hub - AI技能生命周期管理工具",
+	SilenceErrors: true,
 	Long: `skill-hub 是一款专为 AI 时代开发者设计的"技能（Prompt/Script）生命周期管理工具"。
 它旨在解决 AI 指令碎片化、跨工具同步难、缺乏版本控制等痛点。
 
@@ -41,6 +43,16 @@ var rootCmd = &cobra.Command{
 
 func Execute() error {
 	return rootCmd.Execute()
+}
+
+func FormatError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if msg := apperrors.Message(err); msg != "" {
+		return msg
+	}
+	return err.Error()
 }
 
 func init() {

@@ -46,6 +46,11 @@ func TestCompileSkillIDPattern_ValidPatterns(t *testing.T) {
 		{"star crosses slash", "magic*", "magic-team/magic-skill", true},
 		{"star crosses slash owner prefix", "magic-team/*", "magic-team/magic-skill", true},
 		{"star still matches simple id", "magic*", "magic-skill", true},
+		{"utf8 exact", "数据技能", "数据技能", true},
+		{"utf8 question mark", "数据?", "数据集", true},
+		{"utf8 star", "数据*", "数据处理", true},
+		{"utf8 character class", "数据[处理]", "数据处", true},
+		{"utf8 character range", "技能[α-ω]", "技能β", true},
 	}
 
 	for _, c := range cases {

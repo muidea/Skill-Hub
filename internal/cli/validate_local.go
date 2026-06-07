@@ -28,7 +28,7 @@ var validateCmd = &cobra.Command{
   --all                 验证当前项目状态中登记的所有技能
   --pattern '<glob>'    验证匹配 pattern 的技能（可重复）
 
---pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
+--pattern 语法（类 glob，匹配当前项目登记的技能 ID；* 可跨 /）：
   *        匹配零或多个任意字符
   ?        匹配恰好一个任意字符
   **       匹配全部`,
@@ -76,7 +76,7 @@ func init() {
 	validateCmd.Flags().Bool("check-remote", false, "同时检查HTTP/HTTPS远端链接")
 	validateCmd.Flags().String("project-root", "", "解析项目相对链接的根目录，默认使用当前项目目录或metadata.project_root")
 	validateCmd.Flags().Bool("json", false, "以JSON格式输出验证报告")
-	validateCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。值不会被 shell 展开。")
+	validateCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。请引用通配符避免 shell 展开。")
 }
 
 func runValidateWithOptions(skillID string, opts validateCLIOptions) error {
@@ -192,21 +192,12 @@ func runValidateByPatterns(patterns []string, opts validateCLIOptions) error {
 		}
 		return runValidateByLiteralIDs(ids, opts)
 	}
-	allMatches, err := resolveSkillsByPatterns(patterns)
+	ids, err := resolveProjectSkillIDsByPatterns(patterns)
 	if err != nil {
 		return err
 	}
-	if len(allMatches) == 0 {
+	if len(ids) == 0 {
 		return nil
-	}
-	seen := make(map[string]struct{}, len(allMatches))
-	ids := make([]string, 0, len(allMatches))
-	for _, s := range allMatches {
-		if _, ok := seen[s.ID]; ok {
-			continue
-		}
-		seen[s.ID] = struct{}{}
-		ids = append(ids, s.ID)
 	}
 
 	aggregate := &projectlifecycleservice.ValidateReport{

@@ -211,15 +211,15 @@ skill-hub 提供了一系列命令来管理技能和项目。
 | 命令 | 描述 | 示例 |
 |------|------|------|
 | `init` | 初始化多仓库工作区 | `skill-hub init [git_url]` |
-| `list` | 列出可用技能 | `skill-hub list [--verbose] [--repo <repo-name>...]` |
+| `list` | 列出可用技能 | `skill-hub list [--pattern <glob>...] [--verbose] [--repo <repo-name>...]` |
 | `search` | 搜索远程技能 | `skill-hub search <keyword> [--limit <number>]` |
 | `create` | 创建新技能模板 | `skill-hub create <id>` |
 | `remove` | 移除项目技能；`--global` 时移除本机全局技能 | `skill-hub remove <id> [--global] [--agent codex|opencode|claude] [--force]` |
-| `validate` | 验证项目工作区中新建 skill 的合规性 | `skill-hub validate <id> [--fix] [--links] [--json]` |
-| `use` | 使用指定技能；`--global` 时写入本机全局期望状态 | `skill-hub use <id> [--global] [--agent codex|opencode|claude]` |
-| `status` | 检查项目或本机全局技能状态 | `skill-hub status [id] [--verbose] [--json] [--global] [--agent codex|opencode|claude]` |
-| `apply` | 应用技能到项目；`--global` 时刷新本机 agent 全局 skills 目录 | `skill-hub apply [id] [--dry-run] [--force] [--global] [--agent codex|opencode|claude]` |
-| `feedback` | 反馈项目修改到默认仓库 | `skill-hub feedback <id> [--dry-run] [--force] [--json]` |
+| `validate` | 验证项目工作区中新建 skill 的合规性 | `skill-hub validate --pattern <id-or-glob> [--fix] [--links] [--json]` |
+| `use` | 使用指定技能；`--global` 时写入本机全局期望状态 | `skill-hub use --pattern <id-or-glob> [--global] [--agent codex|opencode|claude]` |
+| `status` | 检查项目或本机全局技能状态 | `skill-hub status [--pattern <id-or-glob>] [--verbose] [--json] [--global] [--agent codex|opencode|claude]` |
+| `apply` | 应用技能到项目；`--global` 时刷新本机 agent 全局 skills 目录 | `skill-hub apply [--pattern <id-or-glob>] [--dry-run] [--force] [--global] [--agent codex|opencode|claude]` |
+| `feedback` | 反馈项目修改到默认仓库 | `skill-hub feedback --pattern <id-or-glob> [--dry-run] [--force] [--json]` |
 | `prune` | 清理 `state.json` 中失效的项目记录 | `skill-hub prune` |
 | `pull` | 拉取默认仓库的远程更新 | `skill-hub pull [--force] [--check] [--json]` |
 | `push` | 推送默认仓库的本地更改 | `skill-hub push [--message MESSAGE] [--force] [--dry-run] [--json]` |
@@ -260,13 +260,13 @@ skill-hub repo default main
 skill-hub list
 
 # 启用技能
-skill-hub use golang-best-practices
+skill-hub use --pattern golang-best-practices
 
 # 应用技能到项目
 skill-hub apply
 
 # 只刷新一个已启用技能，例如 status 显示 Outdated 时
-skill-hub apply golang-best-practices
+skill-hub apply --pattern golang-best-practices
 
 # 检查技能状态
 skill-hub status
@@ -287,11 +287,11 @@ skill-hub list --repo skills-repo --verbose
 #### 本机全局技能管理
 ```bash
 # 将技能启用为 Codex 全局 skill
-skill-hub use golang-best-practices --global --agent codex
+skill-hub use --pattern golang-best-practices --global --agent codex
 
 # 检查本机全局期望状态与 agent skills 目录是否一致
 skill-hub status --global
-skill-hub status golang-best-practices --global --agent codex
+skill-hub status --pattern golang-best-practices --global --agent codex
 
 # 预览并刷新本机 agent 全局 skills 目录
 skill-hub apply --global --dry-run
@@ -304,10 +304,10 @@ skill-hub remove golang-best-practices --global --agent codex
 #### 技能反馈和更新
 ```bash
 # 反馈手动修改
-skill-hub feedback golang-best-practices
+skill-hub feedback --pattern golang-best-practices
 
 # 演习模式查看将要同步的差异
-skill-hub feedback golang-best-practices --dry-run
+skill-hub feedback --pattern golang-best-practices --dry-run
 
 # 从远程仓库拉取最新技能
 skill-hub pull
@@ -328,7 +328,7 @@ skill-hub remove golang-best-practices
 skill-hub create my-new-skill
 
 # 在本地项目中验证技能有效性
-skill-hub validate my-new-skill
+skill-hub validate --pattern my-new-skill
 ```
 
 ## 技能管理
@@ -418,13 +418,13 @@ skill-hub 支持多种AI开发工具，可以将技能同步到不同的工具�
 
 ```bash
 # 启用技能
-skill-hub use git-expert
+skill-hub use --pattern git-expert
 
 # 应用技能到项目
 skill-hub apply
 
 # 只刷新一个已启用技能，例如 status 显示 Outdated 时
-skill-hub apply git-expert
+skill-hub apply --pattern git-expert
 
 # 演习模式查看将要进行的变更
 skill-hub apply --dry-run
@@ -436,7 +436,7 @@ skill-hub status
 skill-hub status --verbose
 
 # 刷新本机全局技能
-skill-hub use git-expert --global --agent opencode
+skill-hub use --pattern git-expert --global --agent opencode
 skill-hub apply --global
 ```
 

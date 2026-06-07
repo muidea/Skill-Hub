@@ -2,7 +2,7 @@
 
 ## 变更摘要
 
-- 新增基于 Go `path.Match` 的 glob pattern 语法，匹配技能 `ID` 字段（与历史 `use <id>` / `status <id>` / `apply <id>` / `feedback <id>` / `validate <id>` 的精确 ID 语义保持一致）：
+- 新增 skill-hub 类 glob pattern 语法，匹配技能 `ID` 字段（单字面量保持精确 ID 语义；后续 v0.8.13 已将位置参数入口迁移为 `--pattern`）：
   - `*` 匹配零或多个任意字符
   - `?` 匹配恰好一个任意字符
   - `[abc]` 字符类（否定用 `[^abc]`）
@@ -14,7 +14,7 @@
   - `skill-hub apply [pattern...]`
   - `skill-hub feedback [pattern...]`
   - `skill-hub validate [pattern...]`
-- 单字面量参数（无通配符）保持原有精确 ID 行为，`use <id>` / `status <id>` / `apply <id>` / `feedback <id>` / `validate <id>` 完全向后兼容。
+- 单字面量参数（无通配符）保持原有精确 ID 行为；后续版本中位置参数形式已废弃，需使用 `--pattern <id>`。
 - 单独的 `*` 显式拒绝（`ErrInvalidInput`），避免歧义；如需匹配全部请使用 `**`。
 - `use <pattern...>` 命中 0 个技能时**静默通过**，不报错。
 - `apply` / `feedback` / `validate` 命中多个技能时**逐个处理，单个失败不影响后续**，最后打印成功/失败汇总。

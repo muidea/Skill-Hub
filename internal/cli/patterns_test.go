@@ -102,8 +102,8 @@ func TestRejectPositionalPattern_ShellExpansionHint(t *testing.T) {
 	}{
 		// The shell-expansion footgun: typing `list --pattern magic*` in a cwd
 		// with matching files. Args are the shell-expanded filenames.
-		{"shell-expanded magic glob", []string{"magicCas", "magicCommon", "magicEngine"}, "quote the pattern"},
-		{"shell-expanded single-prefix glob", []string{"foo", "foobar"}, "quote the pattern"},
+		{"shell-expanded magic glob", []string{"magicCas", "magicCommon", "magicEngine"}, "请引用 pattern"},
+		{"shell-expanded single-prefix glob", []string{"foo", "foobar"}, "请引用 pattern"},
 		// Non-shell cases: args don't share a 2-char prefix, or contain
 		// path separators. Don't claim shell expansion in the message.
 		{"unrelated multiple args", []string{"a", "b"}, "--pattern"},
@@ -174,5 +174,46 @@ func TestLooksLikeShellExpansion(t *testing.T) {
 				t.Errorf("looksLikeShellExpansion(%v) = %v, want %v", c.args, got, c.want)
 			}
 		})
+	}
+}
+
+func TestRejectPositionalPatternSilencesUsage(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	err := rejectPositionalPattern(cmd, []string{"magic*"})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !cmd.SilenceUsage {
+		t.Fatalf("expected positional pattern errors to silence cobra usage")
+	}
+	if !strings.Contains(err.Error(), "test --pattern 'magic*'") {
+		t.Fatalf("expected replacement command in error, got %q", err.Error())
+	}
+}
+
+func TestFilterSkillIDsByPatterns(t *testing.T) {
+	ids := []string{"demo-skill", "magic-pack", "magic-pack", "magic-community/magic-tool", "other"}
+	got, err := filterSkillIDsByPatterns([]string{"magic*"}, ids)
+	if err != nil {
+		t.Fatalf("filterSkillIDsByPatterns: %v", err)
+	}
+	want := []string{"magic-community/magic-tool", "magic-pack"}
+	if len(got) != len(want) {
+		t.Fatalf("len(got) = %d, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d] = %q, want %q (all got: %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestFilterSkillIDsByPatternsRejectsBareStar(t *testing.T) {
+	_, err := filterSkillIDsByPatterns([]string{"*"}, []string{"demo-skill"})
+	if err == nil {
+		t.Fatalf("expected error for bare star")
+	}
+	if !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

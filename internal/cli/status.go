@@ -29,7 +29,7 @@ var statusCmd = &cobra.Command{
 - Missing: 技能已启用但本地文件缺失
 
 不带 --pattern 时检查所有已启用技能；带 --pattern 时只显示 ID 匹配
-pattern 的技能。pattern 由 cobra 解析，不会被 shell 展开。`,
+pattern 的已启用技能。请引用带通配符的 pattern，避免 shell 在 skill-hub 启动前展开。`,
 	Args: rejectPositionalPattern,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		verbose, _ := cmd.Flags().GetBool("verbose")
@@ -55,7 +55,7 @@ func init() {
 	statusCmd.Flags().Bool("json", false, "以JSON格式输出状态，便于CI和自动化脚本处理")
 	statusCmd.Flags().Bool("global", false, "检查本机全局技能状态")
 	statusCmd.Flags().StringArray("agent", nil, "限制检查的 agent，可重复使用: codex, opencode, claude")
-	statusCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。值不会被 shell 展开。")
+	statusCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。请引用通配符避免 shell 展开。")
 }
 
 func runStatusGlobalDispatch(patterns []string, agents []string, jsonOutput bool) error {
@@ -114,7 +114,7 @@ func runStatus(skillID string, verbose bool, jsonOutputOpt ...bool) error {
 			if verbose {
 				fmt.Println("\n服务模式当前仅返回状态摘要，详细 diff 仍需本地模式执行。")
 			} else if skillID == "" {
-				fmt.Println("\n使用 'skill-hub status <id>' 检查特定技能状态")
+				fmt.Println("\n使用 'skill-hub status --pattern <id>' 检查特定技能状态")
 				fmt.Println("使用 'skill-hub status --verbose' 显示详细差异")
 			}
 			return nil
@@ -154,7 +154,7 @@ func runStatus(skillID string, verbose bool, jsonOutputOpt ...bool) error {
 			showSkillDetails(item)
 		}
 	} else if !verbose && summary.SkillCount > 0 {
-		fmt.Println("\n使用 'skill-hub status <id>' 检查特定技能状态")
+		fmt.Println("\n使用 'skill-hub status --pattern <id>' 检查特定技能状态")
 		fmt.Println("使用 'skill-hub status --verbose' 显示详细差异")
 	}
 
@@ -167,44 +167,10 @@ func writeJSON(v interface{}) error {
 	return encoder.Encode(v)
 }
 
-// runStatusByPatterns resolves the given patterns and renders the status of
-// the project's enabled skills whose IDs are in the resolved set. An empty
-// match set renders "no matches found" (silent, mirroring `use` semantics).
+// runStatusByPatterns renders the status of the project's enabled skills
+// whose IDs match the supplied patterns. An empty match set renders an empty
+// summary silently, mirroring batch pattern semantics.
 func runStatusByPatterns(patterns []string, verbose bool, jsonOutput bool) error {
-	matchers, err := compilePatterns(patterns)
-	if err != nil {
-		return err
-	}
-	allLiteral := len(matchers) > 0
-	for _, m := range matchers {
-		if !m.IsLiteral() {
-			allLiteral = false
-			break
-		}
-	}
-
-	allMatches, err := resolveSkillsByPatterns(patterns)
-	if err != nil {
-		return err
-	}
-	if allLiteral && len(allMatches) == 0 {
-		// Fall back to the direct filesystem scan so single-literal
-		// status keeps working even if the registry hasn't been refreshed
-		// for a freshly-written repo skill.
-		for _, p := range patterns {
-			direct, directErr := resolveSingleLiteralSkill(p)
-			if directErr != nil {
-				return directErr
-			}
-			allMatches = append(allMatches, direct...)
-		}
-	}
-
-	matchedIDs := make(map[string]struct{}, len(allMatches))
-	for _, s := range allMatches {
-		matchedIDs[s.ID] = struct{}{}
-	}
-
 	if client, ok := hubClientIfAvailable(); ok {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -217,7 +183,10 @@ func runStatusByPatterns(patterns []string, verbose bool, jsonOutput bool) error
 		if data.Item == nil {
 			return nil
 		}
-		filtered := filterStatusSummaryByIDs(data.Item, matchedIDs)
+		filtered, err := filterStatusSummaryByPatterns(data.Item, patterns)
+		if err != nil {
+			return err
+		}
 		if jsonOutput {
 			return writeJSON(filtered)
 		}
@@ -233,7 +202,10 @@ func runStatusByPatterns(patterns []string, verbose bool, jsonOutput bool) error
 	if err != nil {
 		return err
 	}
-	filtered := filterStatusSummaryByIDs(summary, matchedIDs)
+	filtered, err := filterStatusSummaryByPatterns(summary, patterns)
+	if err != nil {
+		return err
+	}
 	if jsonOutput {
 		return writeJSON(filtered)
 	}
@@ -245,6 +217,21 @@ func runStatusByPatterns(patterns []string, verbose bool, jsonOutput bool) error
 		}
 	}
 	return nil
+}
+
+func filterStatusSummaryByPatterns(summary *projectstatusservice.ProjectStatusSummary, patterns []string) (*projectstatusservice.ProjectStatusSummary, error) {
+	if summary == nil {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(summary.Items))
+	for _, item := range summary.Items {
+		ids = append(ids, item.SkillID)
+	}
+	matched, err := filterSkillIDsByPatterns(patterns, ids)
+	if err != nil {
+		return nil, err
+	}
+	return filterStatusSummaryByIDs(summary, stringSetFromSlice(matched)), nil
 }
 
 func filterStatusSummaryByIDs(summary *projectstatusservice.ProjectStatusSummary, ids map[string]struct{}) *projectstatusservice.ProjectStatusSummary {
@@ -265,49 +252,10 @@ func filterStatusSummaryByIDs(summary *projectstatusservice.ProjectStatusSummary
 	return out
 }
 
-// runStatusGlobalByPatterns resolves patterns via the cross-repo skill set,
-// then renders the global status of the skills whose IDs are in the
-// resolved set. An empty match set renders an "empty" summary silently.
+// runStatusGlobalByPatterns renders globally enabled skills whose IDs match
+// the supplied patterns. An empty match set renders an empty summary silently.
 func runStatusGlobalByPatterns(patterns []string, agents []string, jsonOutput bool) error {
-	matchers, err := compilePatterns(patterns)
-	if err != nil {
-		return err
-	}
-	allLiteral := len(matchers) > 0
-	for _, m := range matchers {
-		if !m.IsLiteral() {
-			allLiteral = false
-			break
-		}
-	}
-
-	allMatches, err := resolveSkillsByPatterns(patterns)
-	if err != nil {
-		return err
-	}
-	if allLiteral && len(allMatches) == 0 {
-		// Fall back to the direct filesystem scan so single-literal
-		// global status keeps working even if the registry hasn't been
-		// refreshed for a freshly-written repo skill.
-		for _, p := range patterns {
-			direct, directErr := resolveSingleLiteralSkill(p)
-			if directErr != nil {
-				return directErr
-			}
-			allMatches = append(allMatches, direct...)
-		}
-	}
-	matchedIDs := make(map[string]struct{}, len(allMatches))
-	for _, s := range allMatches {
-		matchedIDs[s.ID] = struct{}{}
-	}
-
 	if client, ok := hubClientIfAvailable(); ok {
-		// Inspect with empty skillID pulls the full global summary; we then
-		// filter the per-skill items down to the pattern-resolved set. The
-		// per-skill-per-agent SKILL_NOT_FOUND guard is intentionally relaxed
-		// for the pattern case — by design the user is asking for "all
-		// matching skills" rather than a single skill.
 		data, err := client.GetGlobalStatus(context.Background(), "", agents)
 		if err != nil {
 			return errors.Wrap(err, "通过服务获取全局状态失败")
@@ -315,7 +263,10 @@ func runStatusGlobalByPatterns(patterns []string, agents []string, jsonOutput bo
 		if data.Item == nil {
 			return nil
 		}
-		filtered := filterGlobalStatusSummaryByIDs(data.Item, matchedIDs)
+		filtered, err := filterGlobalStatusSummaryByPatterns(data.Item, patterns)
+		if err != nil {
+			return err
+		}
 		if jsonOutput {
 			return writeJSON(filtered)
 		}
@@ -330,12 +281,30 @@ func runStatusGlobalByPatterns(patterns []string, agents []string, jsonOutput bo
 	if err != nil {
 		return err
 	}
-	filtered := filterGlobalStatusSummaryByIDs(summary, matchedIDs)
+	filtered, err := filterGlobalStatusSummaryByPatterns(summary, patterns)
+	if err != nil {
+		return err
+	}
 	if jsonOutput {
 		return writeJSON(filtered)
 	}
 	renderGlobalStatusSummary(filtered)
 	return nil
+}
+
+func filterGlobalStatusSummaryByPatterns(summary *globalservice.StatusSummary, patterns []string) (*globalservice.StatusSummary, error) {
+	if summary == nil {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(summary.Items))
+	for _, item := range summary.Items {
+		ids = append(ids, item.SkillID)
+	}
+	matched, err := filterSkillIDsByPatterns(patterns, ids)
+	if err != nil {
+		return nil, err
+	}
+	return filterGlobalStatusSummaryByIDs(summary, stringSetFromSlice(matched)), nil
 }
 
 func filterGlobalStatusSummaryByIDs(summary *globalservice.StatusSummary, ids map[string]struct{}) *globalservice.StatusSummary {

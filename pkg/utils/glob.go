@@ -2,6 +2,7 @@ package utils
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/muidea/skill-hub/pkg/errors"
 )
@@ -111,6 +112,9 @@ func matchGlob(pattern, s string) bool {
 }
 
 func matchAt(pat string, pi int, s string, si int) bool {
+	if si > len(s) {
+		return false
+	}
 	for pi < len(pat) {
 		switch pat[pi] {
 		case '*':
@@ -130,34 +134,39 @@ func matchAt(pat string, pi int, s string, si int) bool {
 				if si == len(s) {
 					return false
 				}
-				// Advance one rune to handle multi-byte UTF-8 safely.
-				si += len(string(s[si]))
+				_, size := utf8.DecodeRuneInString(s[si:])
+				si += size
 			}
 			return false
 		case '[':
 			if si >= len(s) {
 				return false
 			}
+			r, size := utf8.DecodeRuneInString(s[si:])
 			negate := false
 			pi++
 			if pi < len(pat) && pat[pi] == '^' {
 				negate = true
 				pi++
 			}
-			cls := s[si]
 			matched := false
 			for pi < len(pat) && pat[pi] != ']' {
-				if pi+2 < len(pat) && pat[pi+1] == '-' {
-					if cls >= pat[pi] && cls <= pat[pi+2] {
-						matched = true
+				start, startSize := utf8.DecodeRuneInString(pat[pi:])
+				if next := pi + startSize; next < len(pat) && pat[next] == '-' {
+					endIdx := next + 1
+					if endIdx < len(pat) && pat[endIdx] != ']' {
+						end, endSize := utf8.DecodeRuneInString(pat[endIdx:])
+						if r >= start && r <= end {
+							matched = true
+						}
+						pi = endIdx + endSize
+						continue
 					}
-					pi += 3
-					continue
 				}
-				if pat[pi] == cls {
+				if start == r {
 					matched = true
 				}
-				pi++
+				pi += startSize
 			}
 			if pi >= len(pat) {
 				return false
@@ -166,19 +175,25 @@ func matchAt(pat string, pi int, s string, si int) bool {
 				return false
 			}
 			pi++
-			si += len(string(s[si]))
+			si += size
 		case '?':
 			if si >= len(s) {
 				return false
 			}
+			_, size := utf8.DecodeRuneInString(s[si:])
 			pi++
-			si += len(string(s[si]))
+			si += size
 		default:
-			if si >= len(s) || pat[pi] != s[si] {
+			if si >= len(s) {
 				return false
 			}
-			pi++
-			si++
+			r, size := utf8.DecodeRuneInString(s[si:])
+			pr, pSize := utf8.DecodeRuneInString(pat[pi:])
+			if pr != r {
+				return false
+			}
+			pi += pSize
+			si += size
 		}
 	}
 	return si == len(s)

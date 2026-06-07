@@ -59,7 +59,7 @@ skill-hub search git
 启用并应用 skill：
 
 ```bash
-skill-hub use git-expert
+skill-hub use --pattern git-expert
 skill-hub apply
 skill-hub status
 ```
@@ -67,26 +67,26 @@ skill-hub status
 只刷新一个已启用 skill：
 
 ```bash
-skill-hub apply git-expert
-skill-hub status git-expert
+skill-hub apply --pattern git-expert
+skill-hub status --pattern git-expert
 ```
 
 将项目中的改进反馈回默认仓库：
 
 ```bash
-skill-hub feedback git-expert --dry-run
-skill-hub feedback git-expert --force
+skill-hub feedback --pattern git-expert --dry-run
+skill-hub feedback --pattern git-expert --force
 skill-hub push --dry-run --json
 ```
 
-如果 `status` 显示 `ModifiedAgainstOutdatedRepo`，先执行 `skill-hub apply <id>` 刷新到仓库高版本，再把必要修改迁移到新版本后反馈。
+如果 `status` 显示 `ModifiedAgainstOutdatedRepo`，先执行 `skill-hub apply --pattern <id>` 刷新到仓库高版本，再把必要修改迁移到新版本后反馈。
 
 ## 本机全局 Skill
 
 如果希望某个 skill 对本机 agent 全局可用，可以使用 `--global`：
 
 ```bash
-skill-hub use git-expert --global --agent codex
+skill-hub use --pattern git-expert --global --agent codex
 skill-hub status --global
 skill-hub apply --global --dry-run
 skill-hub apply --global
@@ -100,15 +100,15 @@ skill-hub apply --global
 
 ```bash
 skill-hub create my-skill
-skill-hub validate my-skill --links
-skill-hub feedback my-skill --force
+skill-hub validate --pattern my-skill --links
+skill-hub feedback --pattern my-skill --force
 ```
 
 登记已有项目 skill：
 
 ```bash
 skill-hub register existing-skill
-skill-hub validate existing-skill --fix
+skill-hub validate --pattern existing-skill --fix
 ```
 
 批量导入和归档：

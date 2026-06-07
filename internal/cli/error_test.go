@@ -89,3 +89,12 @@ func TestErrorHandling(t *testing.T) {
 		}
 	})
 }
+
+func TestFormatErrorUsesUserMessage(t *testing.T) {
+	err := errors.NewWithCode("rejectPositionalPattern", errors.ErrInvalidInput, "请改用：skill-hub list --pattern 'magic*'")
+	got := FormatError(err)
+	want := "请改用：skill-hub list --pattern 'magic*'"
+	if got != want {
+		t.Fatalf("FormatError() = %q, want %q", got, want)
+	}
+}

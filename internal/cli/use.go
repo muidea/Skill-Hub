@@ -17,8 +17,8 @@ import (
 var useCmd = &cobra.Command{
 	Use:   "use --pattern ... [--global] [--agent ...]",
 	Short: "使用技能",
-	Long: `将技能标记为在当前项目中使用。pattern 经由 --pattern 标志传入（由 cobra 解析，
-不会被 shell 展开），匹配技能 ID 字段（基于 Go path.Match）：
+	Long: `将技能标记为在当前项目中使用。pattern 经由 --pattern 标志传入，
+匹配技能 ID 字段（类 glob，* 可跨 /）：
   *        匹配零或多个任意字符
   ?        匹配恰好一个任意字符
   **       匹配全部
@@ -54,7 +54,7 @@ var useCmd = &cobra.Command{
 func init() {
 	useCmd.Flags().Bool("global", false, "将技能标记为本机全局使用")
 	useCmd.Flags().StringArray("agent", nil, "指定全局应用的 agent，可重复使用: codex, opencode, claude")
-	useCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。值不会被 shell 展开。")
+	useCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。请引用通配符避免 shell 展开。")
 	_ = useCmd.RegisterFlagCompletionFunc("agent", completeAgentNames)
 }
 

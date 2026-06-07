@@ -1,11 +1,16 @@
 package cli
 
 import (
+	"context"
+	"os"
+	"sort"
 	"strings"
 
+	globalservice "github.com/muidea/skill-hub/internal/modules/kernel/global/service"
 	"github.com/spf13/cobra"
 
 	"github.com/muidea/skill-hub/pkg/errors"
+	pkgutils "github.com/muidea/skill-hub/pkg/utils"
 )
 
 // rejectPositionalPattern is a cobra Args validator used by every
@@ -28,9 +33,18 @@ func rejectPositionalPattern(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return nil
 	}
-	hint := "positional arguments are no longer accepted; pass the pattern via --pattern"
-	if looksLikeShellExpansion(args) {
-		hint += " (your shell expanded the glob before skill-hub saw it — quote the pattern, e.g. --pattern 'magic*')"
+	cmd.SilenceUsage = true
+	command := cmd.CommandPath()
+	if command == "" {
+		command = cmd.Use
+	}
+
+	hint := "不再支持位置参数 pattern，请通过 --pattern 传入"
+	switch {
+	case looksLikeShellExpansion(args):
+		hint += "；检测到多个位置参数，可能是未引用的 glob 被 shell 展开。请引用 pattern，例如：" + command + " --pattern 'magic*'"
+	case len(args) == 1:
+		hint += "。请改用：" + command + " --pattern '" + args[0] + "'"
 	}
 	return errors.NewWithCodef("rejectPositionalPattern", errors.ErrInvalidInput, "%s", hint)
 }
@@ -105,4 +119,100 @@ func readPatternFlag(cmd *cobra.Command) ([]string, error) {
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+func filterSkillIDsByPatterns(patterns []string, skillIDs []string) ([]string, error) {
+	matchers, err := compilePatterns(patterns)
+	if err != nil {
+		return nil, err
+	}
+	if len(matchers) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, len(skillIDs))
+	var out []string
+	for _, id := range skillIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		for _, matcher := range matchers {
+			if matcher.Match(id) {
+				seen[id] = struct{}{}
+				out = append(out, id)
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func stringSetFromSlice(values []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		set[value] = struct{}{}
+	}
+	return set
+}
+
+func resolveProjectSkillIDsByPatterns(patterns []string) ([]string, error) {
+	if client, ok := hubClientIfAvailable(); ok {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, pkgutils.GetCwdErr(err)
+		}
+		data, err := client.GetProjectStatus(context.Background(), cwd, "")
+		if err != nil {
+			return nil, errors.Wrap(err, "通过服务读取项目技能状态失败")
+		}
+		if data.Item == nil {
+			return nil, nil
+		}
+		ids := make([]string, 0, len(data.Item.Items))
+		for _, item := range data.Item.Items {
+			ids = append(ids, item.SkillID)
+		}
+		return filterSkillIDsByPatterns(patterns, ids)
+	}
+
+	ctx, err := RequireInitAndWorkspace("")
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(ctx.ProjectState.Skills))
+	for id := range ctx.ProjectState.Skills {
+		ids = append(ids, id)
+	}
+	return filterSkillIDsByPatterns(patterns, ids)
+}
+
+func resolveGlobalSkillIDsByPatterns(patterns []string, agents []string) ([]string, error) {
+	if client, ok := hubClientIfAvailable(); ok {
+		data, err := client.GetGlobalStatus(context.Background(), "", agents)
+		if err != nil {
+			return nil, errors.Wrap(err, "通过服务读取全局技能状态失败")
+		}
+		if data.Item == nil {
+			return nil, nil
+		}
+		ids := make([]string, 0, len(data.Item.Items))
+		for _, item := range data.Item.Items {
+			ids = append(ids, item.SkillID)
+		}
+		return filterSkillIDsByPatterns(patterns, ids)
+	}
+
+	if err := CheckInitDependency(); err != nil {
+		return nil, err
+	}
+	summary, err := globalservice.New().Inspect("", agents)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(summary.Items))
+	for _, item := range summary.Items {
+		ids = append(ids, item.SkillID)
+	}
+	return filterSkillIDsByPatterns(patterns, ids)
 }

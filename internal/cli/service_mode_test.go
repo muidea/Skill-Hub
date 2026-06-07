@@ -365,21 +365,32 @@ func TestRunApplyViaServiceWithoutLocalConfig(t *testing.T) {
 	}
 }
 
-// TestRunApplyByPatternViaService exercises the v0.8.13 --pattern path
-// end-to-end through the service bridge: runApplyByPatterns calls
-// FindSkillsByPatterns to resolve, then dispatches to ApplyProject once
-// per matched skill. We assert both calls fire with the expected IDs.
+// TestRunApplyByPatternViaService exercises the --pattern path end-to-end
+// through the service bridge: project apply patterns filter the current
+// project's enabled skills, then dispatch to ApplyProject once per matched
+// skill. Repository-wide pattern lookup must not be used here.
 func TestRunApplyByPatternViaService(t *testing.T) {
 	projectDir := t.TempDir()
 	var applied []string
+	findCalled := false
 	reset := stubServiceBridge(t, &fakeServiceBridgeClient{
 		findSkillsByPatternsFn: func(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error) {
-			if len(patterns) != 1 || patterns[0] != "magic*" {
-				t.Fatalf("unexpected patterns: %#v", patterns)
+			findCalled = true
+			return nil, errors.New("FindSkillsByPatterns should not be used for project apply patterns")
+		},
+		getProjectStatusFn: func(ctx context.Context, projectPath, skillID string) (*httpapibiz.ProjectStatusData, error) {
+			if skillID != "" {
+				return nil, errors.New("pattern apply should inspect all enabled project skills")
 			}
-			return []spec.SkillMetadata{
-				{ID: "magic-base", Name: "Magic Base", Repository: "main"},
-				{ID: "magic-pack", Name: "Magic Pack", Repository: "main"},
+			return &httpapibiz.ProjectStatusData{
+				Item: &projectstatusservice.ProjectStatusSummary{
+					ProjectPath: projectPath,
+					Items: []projectstatusservice.SkillStatusItem{
+						{SkillID: "magic-base", Status: "Synced"},
+						{SkillID: "magic-pack", Status: "Synced"},
+						{SkillID: "other-skill", Status: "Synced"},
+					},
+				},
 			}, nil
 		},
 		applyProjectFn: func(ctx context.Context, req httpapibiz.ApplyProjectRequest) (*httpapibiz.ApplyProjectData, error) {
@@ -404,6 +415,9 @@ func TestRunApplyByPatternViaService(t *testing.T) {
 			}
 		})
 	})
+	if findCalled {
+		t.Fatalf("FindSkillsByPatterns should not be called")
+	}
 	if len(applied) != 2 {
 		t.Fatalf("expected 2 apply calls, got %d (%v)", len(applied), applied)
 	}
@@ -727,6 +741,60 @@ func TestRunSearchViaServiceFailureIsGraceful(t *testing.T) {
 	})
 	if !strings.Contains(output, "本地服务搜索失败") {
 		t.Fatalf("unexpected search output: %q", output)
+	}
+}
+
+func TestRunApplyWithPatternsViaServiceFiltersProjectEnabledSkills(t *testing.T) {
+	projectDir := t.TempDir()
+	var applied []string
+	findCalled := false
+	reset := stubServiceBridge(t, &fakeServiceBridgeClient{
+		findSkillsByPatternsFn: func(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error) {
+			findCalled = true
+			return nil, errors.New("FindSkillsByPatterns should not be used for project apply patterns")
+		},
+		getProjectStatusFn: func(ctx context.Context, projectPath, skillID string) (*httpapibiz.ProjectStatusData, error) {
+			if skillID != "" {
+				return nil, errors.New("pattern apply should inspect all enabled project skills")
+			}
+			return &httpapibiz.ProjectStatusData{
+				Item: &projectstatusservice.ProjectStatusSummary{
+					ProjectPath: projectPath,
+					Items: []projectstatusservice.SkillStatusItem{
+						{SkillID: "demo-skill", Status: "Synced"},
+						{SkillID: "other-skill", Status: "Synced"},
+					},
+				},
+			}, nil
+		},
+		applyProjectFn: func(ctx context.Context, req httpapibiz.ApplyProjectRequest) (*httpapibiz.ApplyProjectData, error) {
+			applied = append(applied, req.SkillID)
+			return &httpapibiz.ApplyProjectData{
+				Item: &projectapplyservice.ApplyResult{
+					ProjectPath: req.ProjectPath,
+					DryRun:      req.DryRun,
+					Items: []projectapplyservice.ApplyResultItem{
+						{SkillID: req.SkillID, Status: "planned"},
+					},
+				},
+			}, nil
+		},
+	})
+	defer reset()
+
+	_ = withWorkingDir(t, projectDir, func() string {
+		return captureStdout(t, func() {
+			if err := runApplyWithPatterns([]string{"demo*"}, true, false); err != nil {
+				t.Fatalf("runApplyWithPatterns returned error: %v", err)
+			}
+		})
+	})
+
+	if findCalled {
+		t.Fatalf("FindSkillsByPatterns should not be called")
+	}
+	if len(applied) != 1 || applied[0] != "demo-skill" {
+		t.Fatalf("applied = %v, want [demo-skill]", applied)
 	}
 }
 

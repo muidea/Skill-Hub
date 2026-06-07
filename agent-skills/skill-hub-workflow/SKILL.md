@@ -5,7 +5,7 @@ compatibility: "Designed for Claude Code, Cursor, OpenCode, and other AI coding 
 metadata:
   author: skill-hub Team
   tags: skill-hub,skills,workflow,router
-  version: 1.1.5
+  version: 1.1.6
 ---
 
 # Skill Hub Workflow Router
@@ -65,9 +65,9 @@ For authoring reusable skills:
 
 ```bash
 skill-hub create <skill-id>
-skill-hub validate <skill-id> --links
-skill-hub feedback <skill-id> --dry-run
-skill-hub feedback <skill-id> --force
+skill-hub validate --pattern <skill-id> --links
+skill-hub feedback --pattern <skill-id> --dry-run
+skill-hub feedback --pattern <skill-id> --force
 ```
 
 For consuming managed skills in a project:
@@ -77,9 +77,9 @@ skill-hub init
 skill-hub repo sync --json
 skill-hub list
 skill-hub search <keyword>
-skill-hub use <skill-id>
+skill-hub use --pattern <skill-id>
 skill-hub apply
-skill-hub apply <skill-id>
+skill-hub apply --pattern <skill-id>
 skill-hub status
 ```
 
@@ -88,7 +88,7 @@ For enabling managed skills globally on this machine:
 ```bash
 skill-hub list
 skill-hub search <keyword>
-skill-hub use <skill-id> --global --agent codex
+skill-hub use --pattern <skill-id> --global --agent codex
 skill-hub status --global
 skill-hub apply --global --dry-run
 skill-hub apply --global

@@ -19,14 +19,14 @@ var listCmd = &cobra.Command{
 	Short: "列出可用技能",
 	Long: `显示本地技能仓库中的所有技能，支持按仓库过滤和按 ID pattern 过滤。
 
---pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
+--pattern 语法（类 glob，匹配技能 ID 字段；* 可跨 /）：
   *        匹配零或多个任意字符
   ?        匹配恰好一个任意字符
   **       匹配全部（替代单独使用 '*'）
   [abc]    字符类（Go 语法，否定用 [^abc]）
 
---pattern 标志由 cobra 解析，不会被 shell 展开；可重复使用以组合多个
-pattern（结果取并集）。
+请引用带通配符的 pattern（例如 'magic*'），避免 shell 在 skill-hub 启动前展开。
+可重复使用 --pattern 以组合多个 pattern（结果取并集）。
 
 示例：
   skill-hub list                    列出所有技能
@@ -49,7 +49,7 @@ pattern（结果取并集）。
 func init() {
 	listCmd.Flags().Bool("verbose", false, "显示详细信息，包括技能描述、版本、适用说明等")
 	listCmd.Flags().StringSlice("repo", []string{}, "按仓库名称过滤技能列表（可多次使用指定多个仓库）")
-	listCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复），如 --pattern 'magic*' --pattern 'git-*'。值不会被 shell 展开。")
+	listCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复），如 --pattern 'magic*' --pattern 'git-*'。请引用通配符避免 shell 展开。")
 }
 
 func runList(verbose bool, repoFilters []string, patterns []string) error {

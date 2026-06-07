@@ -39,7 +39,7 @@ var feedbackCmd = &cobra.Command{
 使用 --dry-run 参数演习模式，仅显示将要同步的差异。
 使用 --force 参数强制更新，即使有冲突也继续执行。
 
---pattern 语法（基于 Go path.Match，匹配技能 ID 字段）：
+--pattern 语法（类 glob，匹配当前项目登记的技能 ID；* 可跨 /）：
   *        匹配零或多个任意字符
   ?        匹配恰好一个任意字符
   **       匹配全部
@@ -74,7 +74,7 @@ func init() {
 	feedbackCmd.Flags().BoolVar(&feedbackForce, "force", false, "强制更新，即使有冲突也继续执行")
 	feedbackCmd.Flags().BoolVar(&feedbackAll, "all", false, "反馈当前项目状态中登记的全部技能")
 	feedbackCmd.Flags().BoolVar(&feedbackJSON, "json", false, "以JSON格式输出反馈结果")
-	feedbackCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。值不会被 shell 展开。")
+	feedbackCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。请引用通配符避免 shell 展开。")
 }
 
 func runFeedback(skillID string) error {
@@ -353,11 +353,10 @@ func runFeedbackAll() error {
 	return nil
 }
 
-// runFeedbackByPatterns resolves the patterns against the cross-repo skill
-// set, then runs the structured feedback pipeline over the matched skill IDs.
-// 0 hits across all patterns is silent. --force / --dry-run must be set
-// (mirrors runFeedbackAll) since this is a batch path; --json suppresses the
-// per-skill rendering and emits the summary as JSON.
+// runFeedbackByPatterns resolves patterns against the current project's
+// registered skills, then runs the structured feedback pipeline over the
+// matched skill IDs. Literal IDs keep the direct single-ID path so newly
+// registered local skills are not dependent on the repository index.
 func runFeedbackByPatterns(patterns []string) error {
 	if !feedbackForce && !feedbackDryRun {
 		return errors.NewWithCode("runFeedbackByPatterns", errors.ErrInvalidInput, "批量反馈需要 --force，或使用 --dry-run 预览")
@@ -404,21 +403,12 @@ func runFeedbackByPatterns(patterns []string) error {
 		}
 		return nil
 	}
-	allMatches, err := resolveSkillsByPatterns(patterns)
+	ids, err := resolveProjectSkillIDsByPatterns(patterns)
 	if err != nil {
 		return err
 	}
-	if len(allMatches) == 0 {
+	if len(ids) == 0 {
 		return nil
-	}
-	seen := make(map[string]struct{}, len(allMatches))
-	ids := make([]string, 0, len(allMatches))
-	for _, s := range allMatches {
-		if _, ok := seen[s.ID]; ok {
-			continue
-		}
-		seen[s.ID] = struct{}{}
-		ids = append(ids, s.ID)
 	}
 
 	summary, err := runFeedbackStructured(ids, false)
