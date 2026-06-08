@@ -30,7 +30,8 @@ var useCmd = &cobra.Command{
 行为：
   - pattern 命中 0 个技能：静默通过，不报错
   - 命中 1 个：直接启用
-  - 命中多个：交互式选择（跨仓库时）
+  - 命中多个不同 ID：逐个启用
+  - 同一 ID 命中多个仓库来源：交互式选择来源仓库
 
 注意：v0.8.13 起不再接受位置参数；'use <id>' 形式需改写为 'use --pattern <id>'。`,
 	Args: rejectPositionalPattern,
@@ -60,8 +61,10 @@ func init() {
 
 // runUseByPatterns resolves each pattern against the cross-repo skill set
 // and applies the resolved skill(s). Per pattern: 0 hits is silent, 1 hit is
-// used directly, N hits trigger chooseSkillCandidate. A failure on one
-// pattern does not stop the remaining patterns; the last error is returned.
+// used directly, N distinct skill IDs are enabled one by one. Only duplicate
+// repository candidates for the same skill ID trigger chooseSkillCandidate.
+// A failure on one skill does not stop the remaining skills; the last error
+// is returned.
 //
 // When every pattern is a literal ID (no wildcards / **), preserve the
 // pre-v0.8.13 single-ID semantics: each ID is looked up via the direct
@@ -102,10 +105,14 @@ func runUseByPatterns(patterns []string, agents []string, isGlobal bool) error {
 
 	var lastErr error
 	processed := 0
+	processedIDs := make(map[string]struct{})
 	for i, p := range patterns {
 		matcher := matchers[i]
 		var pMatches []spec.SkillMetadata
 		for _, s := range allMatches {
+			if _, ok := processedIDs[s.ID]; ok {
+				continue
+			}
 			if matcher.Match(s.ID) {
 				pMatches = append(pMatches, s)
 			}
@@ -115,23 +122,24 @@ func runUseByPatterns(patterns []string, agents []string, isGlobal bool) error {
 			continue
 		}
 
-		var selected spec.SkillMetadata
-		if len(pMatches) == 1 {
-			selected = pMatches[0]
-		} else {
-			selected, err = chooseSkillCandidate(pMatches)
-			if err != nil {
-				lastErr = err
-				continue
-			}
-		}
-
-		if err := runUseOneSkill(selected, isGlobal, agents); err != nil {
-			fmt.Fprintf(os.Stderr, "❌ pattern '%s' 解析的技能 '%s' 启用失败: %v\n", p, selected.ID, err)
+		selectedSkills, err := selectUseCandidates(pMatches)
+		if err != nil {
 			lastErr = err
 			continue
 		}
-		processed++
+		for _, selected := range selectedSkills {
+			if _, ok := processedIDs[selected.ID]; ok {
+				continue
+			}
+
+			if err := runUseOneSkill(selected, isGlobal, agents); err != nil {
+				fmt.Fprintf(os.Stderr, "❌ pattern '%s' 解析的技能 '%s' 启用失败: %v\n", p, selected.ID, err)
+				lastErr = err
+				continue
+			}
+			processedIDs[selected.ID] = struct{}{}
+			processed++
+		}
 	}
 
 	if processed == 0 && lastErr == nil {
@@ -139,6 +147,36 @@ func runUseByPatterns(patterns []string, agents []string, isGlobal bool) error {
 		return nil
 	}
 	return lastErr
+}
+
+func selectUseCandidates(matches []spec.SkillMetadata) ([]spec.SkillMetadata, error) {
+	if len(matches) <= 1 {
+		return matches, nil
+	}
+
+	byID := make(map[string][]spec.SkillMetadata, len(matches))
+	orderedIDs := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if _, ok := byID[match.ID]; !ok {
+			orderedIDs = append(orderedIDs, match.ID)
+		}
+		byID[match.ID] = append(byID[match.ID], match)
+	}
+
+	selectedSkills := make([]spec.SkillMetadata, 0, len(orderedIDs))
+	for _, id := range orderedIDs {
+		candidates := byID[id]
+		if len(candidates) == 1 {
+			selectedSkills = append(selectedSkills, candidates[0])
+			continue
+		}
+		selected, err := chooseSkillCandidate(candidates)
+		if err != nil {
+			return nil, err
+		}
+		selectedSkills = append(selectedSkills, selected)
+	}
+	return selectedSkills, nil
 }
 
 // resolveSingleLiteralSkill mirrors the v0.8.12 single-ID use path: scan

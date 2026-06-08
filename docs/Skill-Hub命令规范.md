@@ -1030,7 +1030,7 @@ skill-hub git remote https://github.com/your-username/skills-repo.git
 
 **批量行为**：
 
-- `use --pattern <glob>...` 命中 0 个技能时**静默通过**，命中 1 个直接启用，命中多个时按现有 `chooseSkillCandidate` 交互选择。
+- `use --pattern <glob>...` 命中 0 个技能时**静默通过**，命中 1 个直接启用，命中多个不同 ID 时逐个启用；只有同一 ID 命中多个仓库来源时，才按现有 `chooseSkillCandidate` 交互选择来源仓库。
 - `apply` / `feedback` / `validate` 命中多个时**逐个处理，单个失败不影响后续**，最后打印成功/失败汇总。
 - `list` / `status` 只展示命中的技能；输出仍走原有渲染器，JSON 模式同样生效。
 

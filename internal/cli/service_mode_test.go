@@ -333,6 +333,88 @@ func TestRunUseViaServiceWithoutLocalConfig(t *testing.T) {
 	}
 }
 
+func TestRunUseByPatternViaServiceEnablesAllDistinctMatches(t *testing.T) {
+	projectDir := t.TempDir()
+	var used []string
+	reset := stubServiceBridge(t, &fakeServiceBridgeClient{
+		findSkillsByPatternsFn: func(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error) {
+			if len(patterns) != 2 || patterns[0] != "magic*" || patterns[1] != "magic-helper" {
+				t.Fatalf("unexpected patterns argument: %#v", patterns)
+			}
+			return []spec.SkillMetadata{
+				{ID: "magic-helper", Name: "Magic Helper", Repository: "skills-repo"},
+				{ID: "magic-pack", Name: "Magic Pack", Repository: "skills-repo"},
+			}, nil
+		},
+		getSkillDetailFn: func(ctx context.Context, skillID, repoName string) (*spec.Skill, error) {
+			return &spec.Skill{ID: skillID, Name: skillID, Repository: repoName, Version: "1.0.0"}, nil
+		},
+		getProjectStatusFn: func(ctx context.Context, projectPath, skillID string) (*httpapibiz.ProjectStatusData, error) {
+			return &httpapibiz.ProjectStatusData{Item: &projectstatusservice.ProjectStatusSummary{ProjectPath: projectPath, SkillCount: 0}}, nil
+		},
+		useSkillFn: func(ctx context.Context, req httpapibiz.UseSkillRequest) (*httpapibiz.UseSkillData, error) {
+			used = append(used, req.Repository+"::"+req.SkillID)
+			return &httpapibiz.UseSkillData{Item: &projectuseservice.UseResult{ProjectPath: req.ProjectPath, SkillID: req.SkillID, Repository: req.Repository}}, nil
+		},
+	})
+	defer reset()
+
+	output := withWorkingDir(t, projectDir, func() string {
+		return captureStdout(t, func() {
+			if err := runUseByPatterns([]string{"magic*", "magic-helper"}, nil, false); err != nil {
+				t.Fatalf("runUseByPatterns returned error: %v", err)
+			}
+		})
+	})
+	if strings.Contains(output, "请选择") {
+		t.Fatalf("distinct pattern matches should not prompt for a single candidate: %q", output)
+	}
+	if got, want := strings.Join(used, ","), "skills-repo::magic-helper,skills-repo::magic-pack"; got != want {
+		t.Fatalf("used skills = %q, want %q", got, want)
+	}
+}
+
+func TestRunUseByPatternViaServicePromptsForDuplicateIDOnly(t *testing.T) {
+	projectDir := t.TempDir()
+	var used []string
+	reset := stubServiceBridge(t, &fakeServiceBridgeClient{
+		findSkillsByPatternsFn: func(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error) {
+			return []spec.SkillMetadata{
+				{ID: "magic-helper", Name: "Magic Helper", Repository: "main"},
+				{ID: "magic-helper", Name: "Magic Helper", Repository: "community"},
+				{ID: "magic-pack", Name: "Magic Pack", Repository: "main"},
+			}, nil
+		},
+		getSkillDetailFn: func(ctx context.Context, skillID, repoName string) (*spec.Skill, error) {
+			return &spec.Skill{ID: skillID, Name: skillID, Repository: repoName, Version: "1.0.0"}, nil
+		},
+		getProjectStatusFn: func(ctx context.Context, projectPath, skillID string) (*httpapibiz.ProjectStatusData, error) {
+			return &httpapibiz.ProjectStatusData{Item: &projectstatusservice.ProjectStatusSummary{ProjectPath: projectPath, SkillCount: 0}}, nil
+		},
+		useSkillFn: func(ctx context.Context, req httpapibiz.UseSkillRequest) (*httpapibiz.UseSkillData, error) {
+			used = append(used, req.Repository+"::"+req.SkillID)
+			return &httpapibiz.UseSkillData{Item: &projectuseservice.UseResult{ProjectPath: req.ProjectPath, SkillID: req.SkillID, Repository: req.Repository}}, nil
+		},
+	})
+	defer reset()
+
+	output := withWorkingDir(t, projectDir, func() string {
+		return withStdin(t, "2\n", func() string {
+			return captureStdout(t, func() {
+				if err := runUseByPatterns([]string{"magic*"}, nil, false); err != nil {
+					t.Fatalf("runUseByPatterns returned error: %v", err)
+				}
+			})
+		})
+	})
+	if !strings.Contains(output, "发现 2 个同名技能") {
+		t.Fatalf("expected duplicate-ID prompt, got %q", output)
+	}
+	if got, want := strings.Join(used, ","), "community::magic-helper,main::magic-pack"; got != want {
+		t.Fatalf("used skills = %q, want %q", got, want)
+	}
+}
+
 func TestRunApplyViaServiceWithoutLocalConfig(t *testing.T) {
 	projectDir := t.TempDir()
 	reset := stubServiceBridge(t, &fakeServiceBridgeClient{
