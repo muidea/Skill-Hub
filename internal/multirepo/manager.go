@@ -191,9 +191,11 @@ func (m *Manager) RemoveRepository(name string) error {
 
 // SyncRepository 同步仓库
 func (m *Manager) SyncRepository(name string) error {
-	// 检查仓库是否存在且启用
-	if _, err := m.GetRepository(name); err != nil {
-		return err
+	if m.config.MultiRepo == nil {
+		return errors.NewWithCode("SyncRepository", errors.ErrConfigInvalid, "多仓库配置未初始化")
+	}
+	if _, exists := m.config.MultiRepo.Repositories[name]; !exists {
+		return errors.NewWithCodef("SyncRepository", errors.ErrConfigInvalid, "仓库 '%s' 不存在", name)
 	}
 
 	repoDir, err := config.GetRepositoryPath(name)

@@ -66,12 +66,21 @@ func (p *ProjectUse) EnableSkill(projectPath, skillID, repoName string, variable
 		return nil, errors.Wrap(err, "EnableSkill: 创建状态管理器失败")
 	}
 
-	if err := stateManager.AddSkillToProjectWithSource(absProjectPath, skillID, fullSkill.Version, selectedRepo, variables); err != nil {
+	projectRoot := absProjectPath
+	projectState, err := stateManager.FindProjectByPath(absProjectPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "EnableSkill: 查找项目状态失败")
+	}
+	if projectState != nil && projectState.ProjectPath != "" {
+		projectRoot = projectState.ProjectPath
+	}
+
+	if err := stateManager.AddSkillToProjectWithSource(projectRoot, skillID, fullSkill.Version, selectedRepo, variables); err != nil {
 		return nil, errors.Wrap(err, "EnableSkill: 保存项目状态失败")
 	}
 
 	return &UseResult{
-		ProjectPath: absProjectPath,
+		ProjectPath: projectRoot,
 		SkillID:     skillID,
 		Version:     fullSkill.Version,
 		Repository:  selectedRepo,

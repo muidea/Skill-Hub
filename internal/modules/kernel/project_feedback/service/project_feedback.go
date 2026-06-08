@@ -51,15 +51,30 @@ func (p *ProjectFeedback) Preview(projectPath, skillID string) (*PreviewResult, 
 		return nil, errors.Wrap(err, "Preview: 创建状态管理器失败")
 	}
 
-	hasSkill, err := stateManager.ProjectHasSkill(projectPath, skillID)
+	projectState, err := stateManager.FindProjectByPath(projectPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "Preview: 检查项目技能状态失败")
+		return nil, errors.Wrap(err, "Preview: 查找项目状态失败")
 	}
+	if projectState == nil {
+		return nil, errors.NewWithCode("Preview", errors.ErrProjectInvalid, "当前目录未在 skill-hub 中注册")
+	}
+
+	projectRoot := projectState.ProjectPath
+	_, hasSkill := projectState.Skills[skillID]
+	if projectRoot == "" {
+		projectRoot = projectPath
+	}
+	absProjectRoot, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return nil, errors.Wrap(err, "Preview: 获取项目绝对路径失败")
+	}
+	projectRoot = absProjectRoot
+
 	if !hasSkill {
 		return nil, errors.NewWithCodef("Preview", errors.ErrSkillNotFound, "技能 '%s' 未在项目工作区中启用", skillID)
 	}
 
-	projectSkillDir := filepath.Join(projectPath, ".agents", "skills", skillID)
+	projectSkillDir := filepath.Join(projectRoot, ".agents", "skills", skillID)
 	projectSkillPath := filepath.Join(projectSkillDir, "SKILL.md")
 	if _, err := os.Stat(projectSkillPath); os.IsNotExist(err) {
 		return nil, errors.NewWithCodef("Preview", errors.ErrFileNotFound, "项目工作区中未找到技能文件: %s", projectSkillPath)
@@ -114,7 +129,7 @@ func (p *ProjectFeedback) Preview(projectPath, skillID string) (*PreviewResult, 
 	blockReason := ""
 	if skillExists && compareVersions(projectVersion, repoVersion) < 0 {
 		blocked = true
-		blockReason = fmt.Sprintf("项目工作区技能版本 %s 低于默认仓库版本 %s，请先执行 skill-hub apply %s 后再合并反馈", projectVersion, repoVersion, skillID)
+		blockReason = fmt.Sprintf("项目工作区技能版本 %s 低于默认仓库版本 %s，请先执行 skill-hub apply --pattern %s 后再合并反馈", projectVersion, repoVersion, skillID)
 	}
 	if (hasContentChanges || len(changes) > 0) && compareVersions(projectVersion, repoVersion) <= 0 {
 		resolvedVersion = bumpPatchVersion(repoVersion)
@@ -122,7 +137,7 @@ func (p *ProjectFeedback) Preview(projectPath, skillID string) (*PreviewResult, 
 	}
 
 	return &PreviewResult{
-		ProjectPath:       projectPath,
+		ProjectPath:       projectRoot,
 		SkillID:           skillID,
 		DefaultRepo:       defaultRepo.Name,
 		SkillExists:       skillExists,
@@ -150,7 +165,7 @@ func (p *ProjectFeedback) Apply(projectPath, skillID string) (*PreviewResult, er
 		return nil, errors.NewWithCode("Apply", errors.ErrValidation, preview.BlockReason)
 	}
 
-	projectSkillDir := filepath.Join(projectPath, ".agents", "skills", skillID)
+	projectSkillDir := filepath.Join(preview.ProjectPath, ".agents", "skills", skillID)
 	projectSkillPath := filepath.Join(projectSkillDir, "SKILL.md")
 	if preview.NeedsVersionBump {
 		if err := updateSkillMdVersion(projectSkillPath, preview.ResolvedVersion); err != nil {
@@ -162,7 +177,7 @@ func (p *ProjectFeedback) Apply(projectPath, skillID string) (*PreviewResult, er
 		return nil, errors.Wrap(err, "Apply: 归档技能到默认仓库失败")
 	}
 
-	updatedPreview, err := p.Preview(projectPath, skillID)
+	updatedPreview, err := p.Preview(preview.ProjectPath, skillID)
 	if err != nil {
 		return preview, nil
 	}

@@ -240,7 +240,7 @@ func runFeedback(skillID string) error {
 			return errors.NewWithCodef(
 				"runFeedback",
 				errors.ErrValidation,
-				"项目工作区技能版本 %s 低于默认仓库版本 %s，请先执行 skill-hub apply %s 后再合并反馈",
+				"项目工作区技能版本 %s 低于默认仓库版本 %s，请先执行 skill-hub apply --pattern %s 后再合并反馈",
 				projectVersion,
 				repoVersion,
 				skillID,
@@ -358,9 +358,6 @@ func runFeedbackAll() error {
 // matched skill IDs. Literal IDs keep the direct single-ID path so newly
 // registered local skills are not dependent on the repository index.
 func runFeedbackByPatterns(patterns []string) error {
-	if !feedbackForce && !feedbackDryRun {
-		return errors.NewWithCode("runFeedbackByPatterns", errors.ErrInvalidInput, "批量反馈需要 --force，或使用 --dry-run 预览")
-	}
 	matchers, err := compilePatterns(patterns)
 	if err != nil {
 		return err
@@ -387,6 +384,12 @@ func runFeedbackByPatterns(patterns []string) error {
 			seen[p] = struct{}{}
 			ids = append(ids, p)
 		}
+		if len(ids) == 1 && !feedbackForce && !feedbackDryRun {
+			return runFeedback(ids[0])
+		}
+		if !feedbackForce && !feedbackDryRun {
+			return errors.NewWithCode("runFeedbackByPatterns", errors.ErrInvalidInput, "批量反馈需要 --force，或使用 --dry-run 预览")
+		}
 		summary, err := runFeedbackStructured(ids, false)
 		if feedbackJSON {
 			if writeErr := writeJSON(summary); writeErr != nil {
@@ -402,6 +405,9 @@ func runFeedbackByPatterns(patterns []string) error {
 			return errors.NewWithCodef("runFeedbackByPatterns", errors.ErrValidation, "%d 个技能反馈失败", summary.Failed)
 		}
 		return nil
+	}
+	if !feedbackForce && !feedbackDryRun {
+		return errors.NewWithCode("runFeedbackByPatterns", errors.ErrInvalidInput, "批量反馈需要 --force，或使用 --dry-run 预览")
 	}
 	ids, err := resolveProjectSkillIDsByPatterns(patterns)
 	if err != nil {

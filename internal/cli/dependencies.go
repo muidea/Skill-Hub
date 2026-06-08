@@ -158,6 +158,11 @@ func RequireInitAndWorkspace(cwd string) (*RunContext, error) {
 			return nil, utils.GetCwdErr(err)
 		}
 	}
+	absCwd, err := filepath.Abs(cwd)
+	if err != nil {
+		return nil, errors.Wrap(err, "获取当前目录绝对路径失败")
+	}
+	cwd = absCwd
 	projectState, err := EnsureProjectWorkspace(cwd)
 	if err != nil {
 		return nil, err
@@ -166,7 +171,11 @@ func RequireInitAndWorkspace(cwd string) (*RunContext, error) {
 	if err != nil {
 		return nil, errors.WrapWithCode(err, "RequireInitAndWorkspace", errors.ErrSystem, "创建状态管理器失败")
 	}
-	return &RunContext{Cwd: cwd, ProjectState: projectState, StateManager: stateManager}, nil
+	projectRoot := cwd
+	if projectState != nil && projectState.ProjectPath != "" {
+		projectRoot = projectState.ProjectPath
+	}
+	return &RunContext{Cwd: projectRoot, ProjectState: projectState, StateManager: stateManager}, nil
 }
 
 // RequireInitOnly 仅执行 CheckInitDependency 并获取当前目录，不要求 workspace

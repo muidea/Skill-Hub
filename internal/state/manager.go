@@ -229,6 +229,9 @@ func (m *StateManager) FindProjectByPath(path string) (*spec.ProjectState, error
 	for {
 		// 检查当前路径是否有绑定
 		if state, exists := allStates[currentPath]; exists {
+			if state.ProjectPath != currentPath {
+				state.ProjectPath = currentPath
+			}
 			return &state, nil
 		}
 

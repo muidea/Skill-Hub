@@ -323,7 +323,7 @@ func runRepoSync(args []string, syncAll bool, jsonOutput bool) error {
 			repos = data.Items
 		} else {
 			var err error
-			repos, err = listRepositories(false)
+			repos, err = listRepositories(syncAll)
 			if err != nil {
 				return errors.Wrap(err, "获取仓库列表失败")
 			}
@@ -406,7 +406,9 @@ func runRepoSyncStructured(args []string, syncAll bool) (*repoSyncSummary, error
 		if useService {
 			err = client.SyncRepo(context.Background(), name)
 		} else {
-			err = syncRepository(name)
+			err = runSilencingStdout(func() error {
+				return syncRepository(name)
+			})
 		}
 		if err != nil {
 			item.Status = "failed"
@@ -440,7 +442,9 @@ func runRepoSyncStructured(args []string, syncAll bool) (*repoSyncSummary, error
 		if useService {
 			syncErr = client.SyncRepo(context.Background(), repo.Name)
 		} else {
-			syncErr = syncRepository(repo.Name)
+			syncErr = runSilencingStdout(func() error {
+				return syncRepository(repo.Name)
+			})
 		}
 		if syncErr != nil {
 			item.Status = "failed"
