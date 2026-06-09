@@ -73,11 +73,11 @@ ${OPENCODE_HOME:-$HOME/.config/opencode}/skills
 | `sync-copies` | 从 canonical 目录同步同 ID 技能副本 | `skill-hub sync-copies --canonical <dir> [--scope <dir>] [--dry-run] [--no-backup] [--json]` |
 | `lint` | 审计项目技能内容 | `skill-hub lint [scope] --paths [--project-root <dir>] [--fix] [--dry-run] [--no-backup] [--json]` |
 | `audit` | 生成技能刷新审计报告 | `skill-hub audit [scope] [--output <file>] [--format markdown|json] [--canonical <dir>] [--project-root <dir>]` |
-| `remove` | 移除项目技能 | `skill-hub remove <id>` |
+| `remove` | 移除项目技能 | `skill-hub remove <id>` 或 `skill-hub remove --pattern <glob>...` |
 | `validate` | 验证技能合规性 | `skill-hub validate --all [--fix] [--links] [--json]` 或 `skill-hub validate --pattern <glob>... [--fix] [--links] [--json]` |
 | `use` | 使用本地仓库里的指定技能 | `skill-hub use --pattern <glob>... [--global [--agent <name>...]]` |
 
-补充：`use` / `remove` 支持 `--global [--agent codex|opencode|claude]`，用于本机全局 agent skills 目录；`list` 仍只表示本地仓库中的可用 skill 清单，不存在项目或全局 scope。`use` / `validate` / `apply` / `feedback` / `status` / `list` 支持通过 `--pattern` 标志传入基于 `ID` 字段的 glob pattern（详见 §6）。位置参数形式 `list magic*` / `use foo*` / `apply magic*` 等已废弃，使用位置参数会被拒绝，并输出面向用户的简化提示，例如 `Error: 不再支持位置参数 pattern，请通过 --pattern 传入。请改用：skill-hub list --pattern 'magic*'`。
+补充：`use` / `remove` 支持 `--global [--agent codex|opencode|claude]`，用于本机全局 agent skills 目录；`list` 仍只表示本地仓库中的可用 skill 清单，不存在项目或全局 scope。`use` / `remove` / `validate` / `apply` / `feedback` / `status` / `list` 支持通过 `--pattern` 标志传入基于 `ID` 字段的 glob pattern（详见 §6）。位置参数形式 `list magic*` / `use foo*` / `apply magic*` / `remove magic*` 等已废弃，使用位置参数会被拒绝，并输出面向用户的简化提示，例如 `Error: 不再支持位置参数 pattern，请通过 --pattern 传入。请改用：skill-hub list --pattern 'magic*'`。
 
 
 ### 3.4. 技能状态
@@ -482,14 +482,15 @@ skill-hub audit . --canonical .agents/skills --project-root "$PWD"
 
 ### 4.6 remove - 移除项目技能
 
-**语法**: `skill-hub remove <id> [--global] [--agent codex|opencode|claude] [--force]`
+**语法**: `skill-hub remove <id> [--global] [--agent codex|opencode|claude] [--force]` 或 `skill-hub remove --pattern <id-or-glob>... [--global] [--agent codex|opencode|claude] [--force]`
 
 **参数**:
-- `id` (必需): 要移除的技能标识符。
+- `id` (与 `--pattern` 二选一): 要移除的技能精确 ID。位置参数只接受精确 ID，通配符必须通过 `--pattern` 传入。
+- `--pattern` (与 `id` 二选一，可重复): 单字面量无通配符按精确 ID 处理；含通配符或多个值时按当前项目或全局状态中的已启用技能 `ID` 字段做 glob 匹配。详见 §6。命中 0 个技能时静默通过。
 
 **功能描述**:
 
-从当前项目工作区中移除指定的技能：
+从当前项目工作区中移除指定的技能；传入 `--pattern` 时，会逐个移除匹配的当前项目已启用技能：
 1. 从 `state.json` 中移除技能标记
 2. 物理删除项目工作区对应的文件/配置
 3. 保留本地仓库中的源文件不受影响
@@ -498,17 +499,23 @@ skill-hub audit . --canonical .agents/skills --project-root "$PWD"
 
 该命令会检查当前所在目录是否存在于本地仓库的`state.json`中，如果存在则更新，不存在则提示是否需要新建项目工作区；新建项目工作区统一初始化 `.agents/skills`，不会根据 target 创建专属文件。
 
-**安全机制**: 如果检测到本地有未反馈的修改，会弹出警告并要求确认。
+**安全机制**: 如果检测到本地有未反馈的修改，会弹出警告并要求确认。批量移除时每个匹配技能仍按单技能移除流程执行安全检查和确认。
 
-使用 `--global` 时，命令不要求当前目录是项目工作区，而是从 `~/.skill-hub/global-state.json` 中移除对应 agent 的全局期望状态，并删除带有 `.skill-hub-manifest.json` 的 agent 全局 skill 目录。默认不会删除没有 Skill-Hub manifest 的同名目录；`--force` 才允许强制删除冲突目录。
+使用 `--global` 时，命令不要求当前目录是项目工作区，而是从 `~/.skill-hub/global-state.json` 中移除对应 agent 的全局期望状态，并删除带有 `.skill-hub-manifest.json` 的 agent 全局 skill 目录。`--pattern` 在全局模式下匹配全局状态中已启用的 skill ID。默认不会删除没有 Skill-Hub manifest 的同名目录；`--force` 才允许强制删除冲突目录。
 
 **示例**:
 ```bash
 # 移除 git-expert 技能
 skill-hub remove git-expert
 
+# 批量移除当前项目中 git-* 前缀的已启用技能
+skill-hub remove --pattern 'git-*'
+
 # 从 Codex 全局目录移除 git-expert
 skill-hub remove git-expert --global --agent codex
+
+# 从 Codex 全局目录批量移除 git-* 前缀的已启用技能
+skill-hub remove --pattern 'git-*' --global --agent codex
 ```
 
 ### 4.7 validate - 验证技能合规性
@@ -1000,12 +1007,13 @@ skill-hub git remote https://github.com/your-username/skills-repo.git
 
 ## 6. Pattern 语法与批量操作
 
-下列命令通过 `--pattern` 标志接受 skill-hub 类 glob pattern，匹配**技能 ID 字段**，用于按 ID 前缀或通配符筛选。`list` / `use` 匹配仓库技能集合；`status` / `apply` 匹配当前项目或全局状态中的已启用技能；`feedback` / `validate` 匹配当前项目登记的技能：
+下列命令通过 `--pattern` 标志接受 skill-hub 类 glob pattern，匹配**技能 ID 字段**，用于按 ID 前缀或通配符筛选。`list` / `use` 匹配仓库技能集合；`status` / `apply` / `remove` 匹配当前项目或全局状态中的已启用技能；`feedback` / `validate` 匹配当前项目登记的技能：
 
 - `list --pattern <glob>...`
 - `use --pattern <glob>...`
 - `status --pattern <glob>...`
 - `apply --pattern <glob>...`
+- `remove --pattern <glob>...`
 - `feedback --pattern <glob>...`
 - `validate --pattern <glob>...`
 
@@ -1022,7 +1030,7 @@ skill-hub git remote https://github.com/your-username/skills-repo.git
 
 **保留规则**：
 
-- 单字面量值（无通配符）按精确 ID 处理；位置参数形式已废弃，精确 ID 也应写成 `--pattern git-expert`。
+- 单字面量值（无通配符）按精确 ID 处理；位置参数形式已废弃，精确 ID 也应写成 `--pattern git-expert`。`remove` 为兼容既有脚本仍保留 `remove <id>` 精确 ID 形式，但通配符批量移除必须使用 `remove --pattern '<glob>'`。
 - 单独的 `*` 会被拒绝（`ErrInvalidInput`），避免歧义。如需匹配全部请使用 `**`。
 - `--pattern` 的空字符串值（`--pattern ''`）会被拒绝（`ErrInvalidInput`）。
 - 语法错误（未闭合的 `[` 等）会立即返回 `ErrInvalidInput`，并在消息中标明出错 pattern。
@@ -1031,7 +1039,7 @@ skill-hub git remote https://github.com/your-username/skills-repo.git
 **批量行为**：
 
 - `use --pattern <glob>...` 命中 0 个技能时**静默通过**，命中 1 个直接启用，命中多个不同 ID 时逐个启用；只有同一 ID 命中多个仓库来源时，才按现有 `chooseSkillCandidate` 交互选择来源仓库。
-- `apply` / `feedback` / `validate` 命中多个时**逐个处理，单个失败不影响后续**，最后打印成功/失败汇总。
+- `remove` / `apply` / `feedback` / `validate` 命中多个时**逐个处理，单个失败不影响后续**。
 - `list` / `status` 只展示命中的技能；输出仍走原有渲染器，JSON 模式同样生效。
 
 **示例**：

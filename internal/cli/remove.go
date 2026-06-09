@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -17,20 +16,43 @@ import (
 )
 
 var removeCmd = &cobra.Command{
-	Use:   "remove <id>",
+	Use:   "remove <id> | --pattern ... [--global] [--agent ...]",
 	Short: "移除项目技能",
-	Long: `从当前项目中移除指定的技能：
+	Long: `从当前项目中移除指定的技能，或通过 --pattern 批量移除匹配的已启用技能：
 1. 从 state.json 中移除技能标记
 2. 物理删除项目本地工作区对应的文件/配置
 3. 保留仓库中的源文件不受影响
 
-安全机制: 如果检测到本地有未反馈的修改，会弹出警告并要求确认。`,
-	Args:              cobra.ExactArgs(1),
+安全机制: 如果检测到本地有未反馈的修改，会弹出警告并要求确认。
+
+--pattern 匹配当前项目或全局状态中的技能 ID 字段，支持类 glob 语法：
+  *        匹配零或多个任意字符
+  ?        匹配恰好一个任意字符
+  **       匹配全部
+
+请引用带通配符的 pattern，避免 shell 在 skill-hub 启动前展开。`,
+	Args:              removeArgs,
 	ValidArgsFunction: completeEnabledSkillIDsForCwd,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		global, _ := cmd.Flags().GetBool("global")
 		agents, _ := cmd.Flags().GetStringArray("agent")
 		force, _ := cmd.Flags().GetBool("force")
+		patterns, err := readPatternFlag(cmd)
+		if err != nil {
+			return err
+		}
+		if len(patterns) > 0 {
+			if len(args) > 0 {
+				return errors.NewWithCode("remove", errors.ErrInvalidInput, "--pattern cannot be combined with positional skill ID")
+			}
+			if global {
+				return runRemoveGlobalByPatterns(patterns, agents, force)
+			}
+			return runRemoveByPatterns(patterns)
+		}
+		if len(args) == 0 {
+			return errors.NewWithCode("remove", errors.ErrInvalidInput, "missing skill ID; use remove <id> or remove --pattern '<id-or-glob>'")
+		}
 		if global {
 			return runRemoveGlobal(args[0], agents, force)
 		}
@@ -42,6 +64,35 @@ func init() {
 	removeCmd.Flags().Bool("global", false, "从本机全局状态和 agent 全局目录移除技能")
 	removeCmd.Flags().StringArray("agent", nil, "限制移除的 agent，可重复使用: codex, opencode, claude")
 	removeCmd.Flags().Bool("force", false, "强制移除全局冲突目录")
+	removeCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。请引用通配符避免 shell 展开。")
+}
+
+func removeArgs(cmd *cobra.Command, args []string) error {
+	patterns, err := readPatternFlag(cmd)
+	if err != nil {
+		return err
+	}
+	if len(patterns) > 0 && len(args) > 0 {
+		cmd.SilenceUsage = true
+		hint := "使用 --pattern 时不能再传位置参数"
+		if looksLikeShellExpansion(args) || len(args) > 1 {
+			command := cmd.CommandPath()
+			if command == "" {
+				command = "skill-hub remove"
+			}
+			hint += "；可能是未引用的 glob 被 shell 展开。请引用 pattern，例如：" + command + " --pattern 'magic*'"
+		}
+		return errors.NewWithCode("removeArgs", errors.ErrInvalidInput, hint)
+	}
+	if len(args) > 1 {
+		cmd.SilenceUsage = true
+		return errors.NewWithCode("removeArgs", errors.ErrInvalidInput, "remove 只接受一个位置参数；批量移除请使用 --pattern '<glob>'")
+	}
+	if len(args) == 1 && strings.ContainsAny(args[0], "*?[") {
+		cmd.SilenceUsage = true
+		return errors.NewWithCode("removeArgs", errors.ErrInvalidInput, "remove 位置参数只支持精确 ID；通配符请使用 --pattern '<glob>'")
+	}
+	return nil
 }
 
 func runRemoveGlobal(skillID string, agents []string, force bool) error {
@@ -65,6 +116,46 @@ func runRemoveGlobal(skillID string, agents []string, force bool) error {
 	}
 	renderGlobalRemoveResult(result)
 	return nil
+}
+
+func runRemoveGlobalByPatterns(patterns []string, agents []string, force bool) error {
+	ids, err := resolveGlobalSkillIDsByPatterns(patterns, agents)
+	if err != nil {
+		return err
+	}
+	return runRemoveGlobalIDs(ids, agents, force)
+}
+
+func runRemoveGlobalIDs(ids []string, agents []string, force bool) error {
+	var lastErr error
+	for _, id := range ids {
+		if err := runRemoveGlobal(id, agents, force); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ 技能 '%s' 全局移除失败: %v\n", id, err)
+			lastErr = err
+			continue
+		}
+	}
+	return lastErr
+}
+
+func runRemoveByPatterns(patterns []string) error {
+	ids, err := resolveProjectSkillIDsByPatterns(patterns)
+	if err != nil {
+		return err
+	}
+	return runRemoveIDs(ids)
+}
+
+func runRemoveIDs(ids []string) error {
+	var lastErr error
+	for _, id := range ids {
+		if err := runRemove(id); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ 技能 '%s' 移除失败: %v\n", id, err)
+			lastErr = err
+			continue
+		}
+	}
+	return lastErr
 }
 
 func runRemove(skillID string) error {
@@ -197,8 +288,8 @@ func confirmRemoval(skillID string, item *projectstatusservice.SkillStatusItem) 
 	}
 	fmt.Print("是否继续？(y/n): ")
 
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
+	var input string
+	_, _ = fmt.Fscan(os.Stdin, &input)
 	input = strings.TrimSpace(strings.ToLower(input))
 
 	return input == "y" || input == "yes"

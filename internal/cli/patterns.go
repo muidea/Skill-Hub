@@ -90,7 +90,7 @@ func longestCommonPrefix(ss []string) string {
 
 // readPatternFlag returns the cleaned value of the --pattern flag for a
 // pattern-aware command. It is the single source of truth for the flag's
-// validation across list/use/status/apply/feedback/validate.
+// validation across list/use/status/apply/remove/feedback/validate.
 //
 // Behaviour:
 //   - flag not set or empty slice → returns (nil, nil) so the caller falls

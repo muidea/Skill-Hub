@@ -11,6 +11,19 @@ import (
 	"github.com/muidea/skill-hub/pkg/spec"
 )
 
+func TestRemoveArgsAllowsLiteralAndRejectsWildcardPositionals(t *testing.T) {
+	if err := removeCmd.Args(removeCmd, []string{"demo-skill"}); err != nil {
+		t.Fatalf("literal remove arg should be accepted, got %v", err)
+	}
+	err := removeCmd.Args(removeCmd, []string{"demo-*"})
+	if err == nil {
+		t.Fatalf("expected wildcard positional arg to be rejected")
+	}
+	if !strings.Contains(err.Error(), "--pattern") {
+		t.Fatalf("expected --pattern hint, got %v", err)
+	}
+}
+
 func TestRunRemoveOpenCodeRemovesStateAndWorkspace(t *testing.T) {
 	config.ResetForTest()
 	defer config.ResetForTest()
@@ -175,6 +188,97 @@ func TestRunRemoveIgnoresLegacyCursorTargetAndRemovesWorkspace(t *testing.T) {
 	states := readCLIState(t, homeDir)
 	if _, ok := states[projectDir].Skills["demo-skill"]; ok {
 		t.Fatalf("expected demo-skill removed from state")
+	}
+}
+
+func TestRunRemoveByPatternRemovesMatchingWorkspaceSkills(t *testing.T) {
+	config.ResetForTest()
+	defer config.ResetForTest()
+
+	homeDir := t.TempDir()
+	projectDir := filepath.Join(homeDir, "workspace", "demo")
+	t.Setenv("SKILL_HUB_HOME", homeDir)
+
+	cfg := &config.Config{
+		MultiRepo: &config.MultiRepoConfig{
+			Enabled:     true,
+			DefaultRepo: "main",
+			Repositories: map[string]config.RepositoryConfig{
+				"main": {Name: "main", Enabled: true},
+			},
+		},
+	}
+	if err := config.SaveConfig(cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	stateSkills := make(map[string]spec.SkillVars)
+	for _, skillID := range []string{"demo-alpha", "demo-beta", "other-skill"} {
+		skillContent := []byte("---\nname: " + skillID + "\nversion: 1.0.0\n---\nHello\n")
+		repoSkillDir := filepath.Join(homeDir, "repositories", "main", "skills", skillID)
+		if err := os.MkdirAll(repoSkillDir, 0755); err != nil {
+			t.Fatalf("mkdir repo skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(repoSkillDir, "SKILL.md"), skillContent, 0644); err != nil {
+			t.Fatalf("write repo skill: %v", err)
+		}
+
+		localSkillDir := filepath.Join(projectDir, ".agents", "skills", skillID)
+		if err := os.MkdirAll(localSkillDir, 0755); err != nil {
+			t.Fatalf("mkdir local skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(localSkillDir, "SKILL.md"), skillContent, 0644); err != nil {
+			t.Fatalf("write local skill: %v", err)
+		}
+
+		stateSkills[skillID] = spec.SkillVars{
+			SkillID:          skillID,
+			Version:          "1.0.0",
+			SourceRepository: "main",
+			Variables:        map[string]string{},
+		}
+	}
+
+	writeCLIState(t, homeDir, map[string]spec.ProjectState{
+		projectDir: {
+			ProjectPath:     projectDir,
+			PreferredTarget: spec.TargetOpenCode,
+			Skills:          stateSkills,
+		},
+	})
+
+	output := withWorkingDir(t, projectDir, func() string {
+		return withStdin(t, "y\ny\n", func() string {
+			return captureStdout(t, func() {
+				if err := runRemoveByPatterns([]string{"demo-*"}); err != nil {
+					t.Fatalf("runRemoveByPatterns returned error: %v", err)
+				}
+			})
+		})
+	})
+
+	if !strings.Contains(output, "demo-alpha") || !strings.Contains(output, "demo-beta") {
+		t.Fatalf("expected output to mention both removed skills, got %q", output)
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".agents", "skills", "demo-alpha")); !os.IsNotExist(err) {
+		t.Fatalf("expected demo-alpha dir removed, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".agents", "skills", "demo-beta")); !os.IsNotExist(err) {
+		t.Fatalf("expected demo-beta dir removed, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".agents", "skills", "other-skill")); err != nil {
+		t.Fatalf("expected other-skill dir preserved, stat err=%v", err)
+	}
+
+	states := readCLIState(t, homeDir)
+	if _, ok := states[projectDir].Skills["demo-alpha"]; ok {
+		t.Fatalf("expected demo-alpha removed from state")
+	}
+	if _, ok := states[projectDir].Skills["demo-beta"]; ok {
+		t.Fatalf("expected demo-beta removed from state")
+	}
+	if _, ok := states[projectDir].Skills["other-skill"]; !ok {
+		t.Fatalf("expected other-skill preserved in state")
 	}
 }
 

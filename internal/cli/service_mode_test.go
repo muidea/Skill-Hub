@@ -10,6 +10,7 @@ import (
 
 	"github.com/muidea/skill-hub/internal/config"
 	httpapibiz "github.com/muidea/skill-hub/internal/modules/blocks/httpapi/biz"
+	globalservice "github.com/muidea/skill-hub/internal/modules/kernel/global/service"
 	projectapplyservice "github.com/muidea/skill-hub/internal/modules/kernel/project_apply/service"
 	projectfeedbackservice "github.com/muidea/skill-hub/internal/modules/kernel/project_feedback/service"
 	projectlifecycleservice "github.com/muidea/skill-hub/internal/modules/kernel/project_lifecycle/service"
@@ -877,6 +878,60 @@ func TestRunApplyWithPatternsViaServiceFiltersProjectEnabledSkills(t *testing.T)
 	}
 	if len(applied) != 1 || applied[0] != "demo-skill" {
 		t.Fatalf("applied = %v, want [demo-skill]", applied)
+	}
+}
+
+func TestRunRemoveGlobalByPatternsViaServiceFiltersGlobalSkills(t *testing.T) {
+	var removed []string
+	reset := stubServiceBridge(t, &fakeServiceBridgeClient{
+		getGlobalStatusFn: func(ctx context.Context, skillID string, agents []string) (*httpapibiz.GlobalStatusData, error) {
+			if skillID != "" {
+				return nil, errors.New("pattern remove should inspect all global skills")
+			}
+			if len(agents) != 1 || agents[0] != "codex" {
+				t.Fatalf("agents = %v, want [codex]", agents)
+			}
+			return &httpapibiz.GlobalStatusData{
+				Item: &globalservice.StatusSummary{
+					Items: []globalservice.StatusItem{
+						{SkillID: "demo-alpha", Agent: "codex", Status: globalservice.StatusOK},
+						{SkillID: "demo-beta", Agent: "codex", Status: globalservice.StatusOK},
+						{SkillID: "other-skill", Agent: "codex", Status: globalservice.StatusOK},
+					},
+				},
+			}, nil
+		},
+		removeGlobalSkillFn: func(ctx context.Context, skillID string, agents []string, force bool) (*httpapibiz.RemoveGlobalSkillData, error) {
+			if len(agents) != 1 || agents[0] != "codex" {
+				t.Fatalf("agents = %v, want [codex]", agents)
+			}
+			if !force {
+				t.Fatalf("force = false, want true")
+			}
+			removed = append(removed, skillID)
+			return &httpapibiz.RemoveGlobalSkillData{
+				Item: &globalservice.RemoveResult{
+					SkillID: skillID,
+					Force:   force,
+					Items: []globalservice.StatusItem{
+						{SkillID: skillID, Agent: "codex", Status: globalservice.StatusRemoved},
+					},
+				},
+			}, nil
+		},
+	})
+	defer reset()
+
+	output := captureStdout(t, func() {
+		if err := runRemoveGlobalByPatterns([]string{"demo-*"}, []string{"codex"}, true); err != nil {
+			t.Fatalf("runRemoveGlobalByPatterns returned error: %v", err)
+		}
+	})
+	if !strings.Contains(output, "全局技能移除流程完成") {
+		t.Fatalf("unexpected output: %q", output)
+	}
+	if got, want := strings.Join(removed, ","), "demo-alpha,demo-beta"; got != want {
+		t.Fatalf("removed = %q, want %q", got, want)
 	}
 }
 
