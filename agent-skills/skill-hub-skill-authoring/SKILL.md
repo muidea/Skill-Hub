@@ -4,7 +4,7 @@ description: "Primary workflow when creating or updating skills in an environmen
 metadata:
   author: skill-hub Team
   tags: skill-hub,skill-authoring,skills,validation,feedback
-  version: 1.0.5
+  version: 1.0.6
 ---
 
 # Skill Hub Skill Authoring
@@ -60,6 +60,18 @@ skill-hub search <keyword>
 ```
 
 Prefer stable lowercase IDs such as `go-runtime-patterns` or `skill-hub-project-usage`.
+
+## Resolve Authoritative Content Before Updating
+
+When a managed skill copy differs from the local repository, do not choose a source by file modification time alone.
+
+1. Treat `~/.skill-hub/repositories/<default>/skills/<skill-id>/` and its Git history as the reusable-skill source of truth.
+2. Compare project, global-agent, and repository copies with directory hashes; use `status --global` for managed global copies.
+3. Inspect `git log --follow -- skills/<skill-id>/SKILL.md` and the matching `registry.json` entry before repairing a discrepancy.
+4. Keep an explicit skill version (`version` or `metadata.version`) once it exists. A missing version is an integrity defect, not a reason to fall back to `1.0.0`.
+5. Preserve the repository copy's current content when refreshing project or global copies; do not feed a stale copy back through `feedback`.
+
+If a repository commit changes the skill body but accidentally drops metadata, restore the metadata from the last consistent commit/index, then refresh the derived copies with `apply` or `apply --global`.
 
 ## Create A New Skill
 
@@ -197,6 +209,10 @@ After feedback, confirm the project and repository copies are synced:
 skill-hub status --pattern <skill-id> --json
 ```
 
+The archive guard rejects updates that drop an existing explicit version, required frontmatter, a first- or second-level section, or a resource under `references/`, `scripts/`, `assets/`, or `agents/`. `--force` does not bypass this integrity protection. Retired metadata with no consumer may be removed through a normal update. If an intentional removal is required, first record and review the canonical repository change rather than using an incomplete project copy as the source.
+
+`repo rebuild-index` can rewrite metadata for many skills. Review `git -C ~/.skill-hub/repositories/<default> diff -- registry.json` after rebuilding; keep the repair scoped to the intended skills instead of accepting unrelated index churn.
+
 ## Publish Only When Explicitly Requested
 
 Preview local repository changes:
@@ -224,6 +240,7 @@ Do not treat `feedback`, `pull`, or `repo sync` as remote publication.
 - Never run `push` automatically.
 - Preserve existing user-authored skill content.
 - Validate before feedback and after repair.
+- Preserve explicit versions and core resources during every update; use Git history and the registry entry to repair drift.
 - Keep reusable skill content under `.agents/skills/<skill-id>/`.
-- Do not write target-specific state or rely on target filtering.
+- Do not write target-specific state or rely on compatibility filtering.
 - If non-push commands return an old read-only serve error, update or restart the running `serve` instance instead of changing the workflow.

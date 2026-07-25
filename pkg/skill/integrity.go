@@ -13,6 +13,13 @@ import (
 var skillHeadingPattern = regexp.MustCompile(`^#{1,2}\s+(.+?)\s*$`)
 var numberedHeadingPrefix = regexp.MustCompile(`^\d+[.)、]\s*`)
 
+// deprecatedFrontmatterRoots contains historical metadata that no longer has
+// a consumer. Its removal must not make an otherwise complete skill update
+// fail the archive integrity check.
+var deprecatedFrontmatterRoots = map[string]struct{}{
+	"compatibility": {},
+}
+
 // EnsureCoreInformationPreserved rejects a skill update that would discard
 // information already present in the archived copy. It deliberately focuses on
 // stable metadata, top-level guidance sections, and reusable skill resources.
@@ -62,6 +69,9 @@ func missingCoreFrontmatterFields(existing, candidate map[string]interface{}) []
 		if field == "version" || field == "metadata.version" {
 			continue
 		}
+		if isDeprecatedFrontmatterField(field) {
+			continue
+		}
 		if _, ok := candidateFields[field]; !ok {
 			missing = append(missing, field)
 		}
@@ -70,6 +80,12 @@ func missingCoreFrontmatterFields(existing, candidate map[string]interface{}) []
 		missing = append(missing, "version")
 	}
 	return missing
+}
+
+func isDeprecatedFrontmatterField(field string) bool {
+	root, _, _ := strings.Cut(field, ".")
+	_, ok := deprecatedFrontmatterRoots[root]
+	return ok
 }
 
 func hasExplicitVersion(frontmatter map[string]interface{}) bool {
