@@ -47,7 +47,7 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	listCmd.Flags().Bool("verbose", false, "显示详细信息，包括技能描述、版本、适用说明等")
+	listCmd.Flags().Bool("verbose", false, "显示详细信息，包括技能描述、版本、标签和作者等")
 	listCmd.Flags().StringSlice("repo", []string{}, "按仓库名称过滤技能列表（可多次使用指定多个仓库）")
 	listCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复），如 --pattern 'magic*' --pattern 'git-*'。请引用通配符避免 shell 展开。")
 }
@@ -165,9 +165,6 @@ func renderSkillList(skillsMetadata []spec.SkillMetadata, repoFilters []string, 
 			if skill.Description != "" {
 				fmt.Printf("   描述: %s\n", skill.Description)
 			}
-			if skill.Compatibility != "" {
-				fmt.Printf("   适用说明: %s\n", skill.Compatibility)
-			}
 			if len(skill.Tags) > 0 {
 				fmt.Printf("   标签: %s\n", strings.Join(skill.Tags, ", "))
 			}
@@ -187,7 +184,6 @@ func renderSkillList(skillsMetadata []spec.SkillMetadata, repoFilters []string, 
 		nameTitleSpaces := widths.nameMin - displayWidth("名称")
 		versionTitleSpaces := widths.versionMin - displayWidth("版本")
 		repoTitleSpaces := widths.repoMin - displayWidth("仓库")
-		toolsTitleSpaces := widths.toolsMin - displayWidth(targetColumnTitle)
 
 		if idTitleSpaces < 0 {
 			idTitleSpaces = 0
@@ -201,23 +197,17 @@ func renderSkillList(skillsMetadata []spec.SkillMetadata, repoFilters []string, 
 		if repoTitleSpaces < 0 {
 			repoTitleSpaces = 0
 		}
-		if toolsTitleSpaces < 0 {
-			toolsTitleSpaces = 0
-		}
-
-		fmt.Printf("%s%s %s%s %s%s %s%s %s%s\n",
+		fmt.Printf("%s%s %s%s %s%s %s%s\n",
 			"ID", strings.Repeat(" ", idTitleSpaces),
 			"名称", strings.Repeat(" ", nameTitleSpaces),
 			"版本", strings.Repeat(" ", versionTitleSpaces),
-			"仓库", strings.Repeat(" ", repoTitleSpaces),
-			targetColumnTitle, strings.Repeat(" ", toolsTitleSpaces))
+			"仓库", strings.Repeat(" ", repoTitleSpaces))
 
-		totalWidth := widths.idMin + widths.nameMin + widths.versionMin + widths.repoMin + widths.toolsMin + 4
+		totalWidth := widths.idMin + widths.nameMin + widths.versionMin + widths.repoMin + 3
 		separator := strings.Repeat("-", totalWidth)
 		fmt.Println(separator)
 
 		for _, skill := range skillsMetadata {
-			toolsStr := getCompatibilitySummary(skill.Compatibility)
 			repoName := formatRepoName(skill.Repository, widths.repoMin)
 			displaySkillID := formatSkillID(skill.ID, widths.idMin)
 
@@ -225,7 +215,6 @@ func renderSkillList(skillsMetadata []spec.SkillMetadata, repoFilters []string, 
 			nameSpaces := widths.nameMin - displayWidth(skill.Name)
 			versionSpaces := widths.versionMin - displayWidth(skill.Version)
 			repoSpaces := widths.repoMin - displayWidth(repoName)
-			toolsSpaces := widths.toolsMin - displayWidth(toolsStr)
 
 			if idSpaces < 0 {
 				idSpaces = 0
@@ -239,16 +228,12 @@ func renderSkillList(skillsMetadata []spec.SkillMetadata, repoFilters []string, 
 			if repoSpaces < 0 {
 				repoSpaces = 0
 			}
-			if toolsSpaces < 0 {
-				toolsSpaces = 0
-			}
 
-			fmt.Printf("%s%s %s%s %s%s %s%s %s%s\n",
+			fmt.Printf("%s%s %s%s %s%s %s%s\n",
 				displaySkillID, strings.Repeat(" ", idSpaces),
 				skill.Name, strings.Repeat(" ", nameSpaces),
 				skill.Version, strings.Repeat(" ", versionSpaces),
-				repoName, strings.Repeat(" ", repoSpaces),
-				toolsStr, strings.Repeat(" ", toolsSpaces))
+				repoName, strings.Repeat(" ", repoSpaces))
 		}
 	}
 
@@ -313,8 +298,6 @@ type columnWidths struct {
 	versionMax int
 	repoMin    int
 	repoMax    int
-	toolsMin   int
-	toolsMax   int
 }
 
 // calculateColumnWidths 计算每列的最佳宽度
@@ -328,14 +311,10 @@ func calculateColumnWidths(skills []spec.SkillMetadata) columnWidths {
 		versionMax: 10, // 版本最大宽度
 		repoMin:    4,  // "仓库" 最小宽度
 		repoMax:    20, // 仓库最大宽度
-		toolsMin:   6,  // "适用范围" 最小宽度
-		toolsMax:   30, // 工具最大宽度
 	}
 
 	// 计算每列的实际最大数据长度
 	for _, skill := range skills {
-		toolsStr := getCompatibilitySummary(skill.Compatibility)
-
 		// 更新ID列宽度（使用显示宽度）
 		updateWidth(&widths.idMin, displayWidth(skill.ID), widths.idMax)
 
@@ -350,8 +329,6 @@ func calculateColumnWidths(skills []spec.SkillMetadata) columnWidths {
 		repoName := formatRepoName(skill.Repository, widths.repoMax)
 		updateWidth(&widths.repoMin, displayWidth(repoName), widths.repoMax)
 
-		// 更新工具列宽度（使用显示宽度）
-		updateWidth(&widths.toolsMin, displayWidth(toolsStr), widths.toolsMax)
 	}
 
 	// 确保每列至少有标题的字节长度，并为中文字符标题添加额外空间
@@ -359,35 +336,12 @@ func calculateColumnWidths(skills []spec.SkillMetadata) columnWidths {
 	if widths.idMin < len("ID") {
 		widths.idMin = len("ID")
 	}
-	// 基于显示宽度设置列宽
-	// 计算每列的最大显示宽度
-	for _, skill := range skills {
-		toolsStr := getCompatibilitySummary(skill.Compatibility)
-
-		// 更新ID列显示宽度
-		updateWidth(&widths.idMin, displayWidth(skill.ID), widths.idMax)
-
-		// 更新名称列显示宽度
-		updateWidth(&widths.nameMin, displayWidth(skill.Name), widths.nameMax)
-
-		// 更新版本列显示宽度
-		updateWidth(&widths.versionMin, displayWidth(skill.Version), widths.versionMax)
-
-		// 更新仓库列显示宽度
-		repoName := formatRepoName(skill.Repository, widths.repoMax)
-		updateWidth(&widths.repoMin, displayWidth(repoName), widths.repoMax)
-
-		// 更新工具列显示宽度
-		updateWidth(&widths.toolsMin, displayWidth(toolsStr), widths.toolsMax)
-	}
-
 	// 确保每列至少有标题的显示宽度
 	titleDisplays := map[string]int{
-		"ID":              displayWidth("ID"),
-		"名称":              displayWidth("名称"),
-		"版本":              displayWidth("版本"),
-		"仓库":              displayWidth("仓库"),
-		targetColumnTitle: displayWidth(targetColumnTitle),
+		"ID": displayWidth("ID"),
+		"名称": displayWidth("名称"),
+		"版本": displayWidth("版本"),
+		"仓库": displayWidth("仓库"),
 	}
 
 	if widths.idMin < titleDisplays["ID"] {
@@ -402,15 +356,10 @@ func calculateColumnWidths(skills []spec.SkillMetadata) columnWidths {
 	if widths.repoMin < titleDisplays["仓库"] {
 		widths.repoMin = titleDisplays["仓库"]
 	}
-	if widths.toolsMin < titleDisplays[targetColumnTitle] {
-		widths.toolsMin = titleDisplays[targetColumnTitle]
-	}
-
 	// 为后三列添加额外显示宽度补偿
 	// 经验值：每个中文字符需要额外1显示宽度补偿
 	widths.versionMin += 2 // "版本"有2个中文字符
 	widths.repoMin += 2    // "仓库"有2个中文字符
-	widths.toolsMin += 4   // "适用范围"有4个中文字符
 
 	// 确保不超过最大宽度限制
 	if widths.idMin > widths.idMax {
@@ -425,9 +374,6 @@ func calculateColumnWidths(skills []spec.SkillMetadata) columnWidths {
 	if widths.repoMin > widths.repoMax {
 		widths.repoMin = widths.repoMax
 	}
-	if widths.toolsMin > widths.toolsMax {
-		widths.toolsMin = widths.toolsMax
-	}
 	// 为中文标题添加额外空间补偿
 	if widths.nameMin < len("名称")+4 { // "名称"需要额外空间
 		widths.nameMin = len("名称") + 4
@@ -438,18 +384,7 @@ func calculateColumnWidths(skills []spec.SkillMetadata) columnWidths {
 	if widths.repoMin < len("仓库")+4 { // "仓库"需要额外空间
 		widths.repoMin = len("仓库") + 4
 	}
-	if widths.toolsMin < len(targetColumnTitle)+8 { // "适用范围"需要更多额外空间
-		widths.toolsMin = len(targetColumnTitle) + 8
-	}
-
 	return widths
-}
-
-func getCompatibilitySummary(compatibility string) string {
-	if strings.TrimSpace(compatibility) == "" {
-		return "通用"
-	}
-	return "已声明"
 }
 
 // formatSkillID 格式化技能ID显示，考虑显示宽度

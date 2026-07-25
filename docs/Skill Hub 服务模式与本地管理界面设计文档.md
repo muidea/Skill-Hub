@@ -260,7 +260,7 @@ CLI bridge 也只调用 HTTP API，不重复实现业务逻辑。
 
 - `repo`
 
-`target` 查询参数和 `/api/v1/project-target` 管理入口已移除；Skill `compatibility` 仅在详情和列表中作为说明展示，不参与过滤、校验或业务逻辑。
+`target` 查询参数和 `/api/v1/project-target` 管理入口已移除；技能详情与列表不再维护工具适配范围字段，也不按该类信息过滤、校验或执行业务逻辑。
 
 ### 7.4 项目与工作区技能
 
@@ -332,7 +332,7 @@ CLI bridge 也只调用 HTTP API，不重复实现业务逻辑。
 
 - 当前 `list` 结果
 - repo 过滤
-- `name/version/repository/compatibility/description`，其中 `compatibility` 仅在技能显式提供说明时展示
+- `name/version/repository/description`
 
 ### 9.3 项目页
 

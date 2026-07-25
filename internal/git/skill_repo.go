@@ -737,7 +737,7 @@ func (sr *SkillRepository) CreateSkill(skill *spec.Skill, promptContent string) 
 	frontmatter := fmt.Sprintf(`---
 name: %s
 description: %s
-%smetadata:
+metadata:
   version: %s
   author: %s
   tags: %s
@@ -745,12 +745,6 @@ description: %s
 `,
 		skill.Name,
 		skill.Description,
-		func() string {
-			if skill.Compatibility != "" {
-				return fmt.Sprintf("compatibility: %s\n", skill.Compatibility)
-			}
-			return ""
-		}(),
 		skill.Version,
 		skill.Author,
 		strings.Join(skill.Tags, ","))
@@ -823,7 +817,6 @@ func buildRegistryFromSkills(skills []*spec.Skill) spec.Registry {
 			Author:           skill.Author,
 			Description:      skill.Description,
 			Tags:             skill.Tags,
-			Compatibility:    skill.Compatibility,
 			Repository:       skill.Repository,
 			RepositoryPath:   skill.RepositoryPath,
 			RepositoryCommit: skill.RepositoryCommit,

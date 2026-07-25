@@ -24,7 +24,6 @@ func TestRefreshRegistryLogic(t *testing.T) {
 name: Valid Skill
 description: A valid skill
 version: 1.0.0
-compatibility: open_code
 ---
 
 # Valid Skill`
@@ -76,11 +75,10 @@ compatibility: open_code
 			"version": "1.0.0",
 			"skills": []map[string]interface{}{
 				{
-					"name":          "Test Skill",
-					"description":   "Test description",
-					"version":       "1.0.0",
-					"compatibility": "open_code",
-					"path":          "test-skill",
+					"name":        "Test Skill",
+					"description": "Test description",
+					"version":     "1.0.0",
+					"path":        "test-skill",
 				},
 			},
 		}

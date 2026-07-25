@@ -5,7 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/muidea/skill-hub/pkg/spec"
 )
 
 func TestNormalizeRepoFilters(t *testing.T) {
@@ -13,6 +16,21 @@ func TestNormalizeRepoFilters(t *testing.T) {
 	want := []string{"main", "community"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("normalizeRepoFilters() = %#v, want %#v", got, want)
+	}
+}
+
+func TestRenderSkillListDoesNotShowTargetColumn(t *testing.T) {
+	output := captureStdout(t, func() {
+		renderSkillList([]spec.SkillMetadata{{
+			ID:         "demo-skill",
+			Name:       "Demo Skill",
+			Version:    "1.0.0",
+			Repository: "main",
+		}}, nil, nil, false)
+	})
+
+	if strings.Contains(output, "适用范围") || strings.Contains(output, "适用说明") {
+		t.Fatalf("list output must not include a target column: %q", output)
 	}
 }
 
@@ -130,7 +148,6 @@ description: A test skill for unit testing
 version: 1.0.0
 author: Test Author
 tags: test,unit
-compatibility: open_code
 ---
 
 # Test Skill
@@ -217,7 +234,6 @@ multi_repo:
 name: Valid Skill
 description: A valid skill
 version: 1.0.0
-compatibility: open_code
 ---
 
 # Valid Skill`
@@ -248,11 +264,10 @@ compatibility: open_code
 			"version": "1.0.0",
 			"skills": []map[string]interface{}{
 				{
-					"name":          "Valid Skill",
-					"description":   "A valid skill",
-					"version":       "1.0.0",
-					"compatibility": "open_code",
-					"path":          "valid-skill",
+					"name":        "Valid Skill",
+					"description": "A valid skill",
+					"version":     "1.0.0",
+					"path":        "valid-skill",
 				},
 			},
 		}

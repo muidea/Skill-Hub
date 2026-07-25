@@ -355,7 +355,6 @@ skill-hub 使用标准的目录结构来组织技能：
 ---
 name: git-expert              # 技能名称（必需）
 description: Git 提交专家      # 技能描述（必需）
-compatibility: Designed for Claude Code, Cursor, and OpenCode (or similar AI coding assistants) # 目标工具兼容性
 metadata:                     # 元数据（可选）
   version: 1.0.0              # 版本号
   author: dev-team            # 作者/团队

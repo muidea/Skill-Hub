@@ -36,13 +36,6 @@ func TestValidator_ValidateFile(t *testing.T) {
 			wantWarnings: 1, // DIRECTORY_MISMATCH_WARNING
 			wantValid:    false,
 		},
-		{
-			name:         "object compatibility format",
-			skillPath:    "testdata/object-compatibility/SKILL.md",
-			wantErrors:   0,
-			wantWarnings: 0,
-			wantValid:    true,
-		},
 	}
 
 	v := NewValidator()
@@ -114,21 +107,6 @@ func TestValidator_ValidateSkill(t *testing.T) {
 			wantErrors:   1, // MISSING_DESCRIPTION
 			wantWarnings: 1, // DIRECTORY_MISMATCH_WARNING
 			wantValid:    false,
-		},
-		{
-			name:      "object compatibility",
-			skillName: "test-skill",
-			frontmatter: map[string]interface{}{
-				"name":        "test-skill",
-				"description": "A test skill with a proper description.",
-				"compatibility": map[string]interface{}{
-					"cursor":      true,
-					"claude_code": false,
-				},
-			},
-			wantErrors:   0,
-			wantWarnings: 1, // DIRECTORY_MISMATCH_WARNING
-			wantValid:    true,
 		},
 	}
 

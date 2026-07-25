@@ -2,16 +2,15 @@ package spec
 
 // Skill 表示一个技能的完整定义
 type Skill struct {
-	ID            string        `yaml:"id" json:"id"`
-	Name          string        `yaml:"name" json:"name"`
-	Version       string        `yaml:"version" json:"version"`
-	Author        string        `yaml:"author" json:"author"`
-	Description   string        `yaml:"description" json:"description"`
-	Tags          []string      `yaml:"tags" json:"tags"`
-	Compatibility string        `yaml:"compatibility,omitempty" json:"compatibility,omitempty"`
-	Variables     []Variable    `yaml:"variables" json:"variables"`
-	Dependencies  []string      `yaml:"dependencies" json:"dependencies"`
-	Claude        *ClaudeConfig `yaml:"claude,omitempty" json:"claude,omitempty"`
+	ID           string        `yaml:"id" json:"id"`
+	Name         string        `yaml:"name" json:"name"`
+	Version      string        `yaml:"version" json:"version"`
+	Author       string        `yaml:"author" json:"author"`
+	Description  string        `yaml:"description" json:"description"`
+	Tags         []string      `yaml:"tags" json:"tags"`
+	Variables    []Variable    `yaml:"variables" json:"variables"`
+	Dependencies []string      `yaml:"dependencies" json:"dependencies"`
+	Claude       *ClaudeConfig `yaml:"claude,omitempty" json:"claude,omitempty"`
 
 	// 多仓库扩展字段
 	Repository       string `yaml:"repository,omitempty" json:"repository,omitempty"`               // 源仓库名称
@@ -49,7 +48,6 @@ type SkillMetadata struct {
 	Author           string   `json:"author"`
 	Description      string   `json:"description"`
 	Tags             []string `json:"tags"`
-	Compatibility    string   `json:"compatibility,omitempty"`
 	Repository       string   `json:"repository,omitempty"`        // 源仓库名称
 	RepositoryPath   string   `json:"repository_path,omitempty"`   // 仓库内路径
 	RepositoryCommit string   `json:"repository_commit,omitempty"` // 仓库提交哈希
@@ -106,10 +104,9 @@ type SkillVars struct {
 
 // CreateOptions 创建技能选项
 type CreateOptions struct {
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	Compatibility string `json:"compatibility"` // cursor, claude, opencode, all
-	OutputDir     string `json:"output_dir"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	OutputDir   string `json:"output_dir"`
 }
 
 // ValidationResult 验证结果

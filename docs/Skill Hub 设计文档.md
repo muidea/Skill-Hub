@@ -86,7 +86,6 @@ graph TD
 ---
 name: git-expert
 description: 根据变更自动生成符合 Conventional Commits 规范的说明
-compatibility: Designed for Cursor and Claude Code (or similar AI coding assistants)
 metadata:
   version: 1.2.0
   author: dev-team
@@ -113,10 +112,8 @@ fix: 修复登录页面样式错位问题
 ```
 
 **注意**：
-- `compatibility` 字段为可选适用说明，不再作为技能是否可用于某个工具的硬门禁
 - `target` 命令和参数入口已从 CLI/API 移除，不写入项目状态、不参与适配器选择、不参与列表/搜索过滤，也不作为业务校验依据
-- 新建和修复 legacy 技能时不再主动补写 `compatibility`
-- 旧的对象格式仍可被读取，但不再要求转换为目标工具字符串
+- 技能元数据不再包含工具或 agent 适配范围；技能选择仅由 ID、来源仓库和用户操作决定
 
 ---
 
@@ -177,7 +174,7 @@ skill-hub/
 | 命令 | 示例 | 详细行为 |
 | :--- | :--- | :--- |
 | `init` | `skill-hub init [git_url]` | 创建 `~/.skill-hub`，初始化全局配置。如提供了git_url参数，则克隆远程仓库；否则仅进行本地管理。 |
-| `list` | `skill-hub list [--verbose]` | 展示本地库中所有 Skill 状态、版本和适用说明；`compatibility` 仅展示，不过滤结果。 |
+| `list` | `skill-hub list [--verbose]` | 展示本地库中所有 Skill 的 ID、版本、来源仓库和详细元数据。 |
 | `search` | `skill-hub search <keyword> [--limit <number>]` | 搜索远程技能，支持结果数量限制。CLI 在本地 `serve` 可用时优先通过服务承接远端交互，不可用时回退到本地执行。 |
 | `create` | `skill-hub create <id>` | 在项目工作区创建一个新技能模板，仅存在于项目本地。 |
 | `remove` | `skill-hub remove <id>` | 从当前项目工作区中移除指定的技能，物理删除项目工作区对应的文件/配置。 |

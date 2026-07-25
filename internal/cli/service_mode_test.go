@@ -22,7 +22,7 @@ import (
 func TestRunListViaServiceWithoutLocalConfig(t *testing.T) {
 	reset := stubServiceBridge(t, &fakeServiceBridgeClient{
 		listSkillsFn: func(ctx context.Context, repoNames []string) ([]spec.SkillMetadata, error) {
-			return []spec.SkillMetadata{{ID: "demo-skill", Name: "Demo Skill", Version: "1.0.0", Repository: "main", Compatibility: "open_code"}}, nil
+			return []spec.SkillMetadata{{ID: "demo-skill", Name: "Demo Skill", Version: "1.0.0", Repository: "main"}}, nil
 		},
 	})
 	defer reset()

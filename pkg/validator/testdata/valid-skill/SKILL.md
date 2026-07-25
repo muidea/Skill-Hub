@@ -1,7 +1,6 @@
 ---
 name: valid-skill
 description: This is a valid skill for testing purposes. It has all required fields and follows the Agent Skills specification.
-compatibility: Designed for Cursor and OpenCode (or similar AI coding assistants)
 metadata:
   version: "1.0.0"
   author: Test Author

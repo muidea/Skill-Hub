@@ -20,7 +20,6 @@ func NewValidator() *Validator {
 			NewFrontmatterRule(),
 			NewNameRule(),
 			NewDescriptionRule(),
-			NewCompatibilityRule(),
 			NewMetadataRule(),
 			NewLicenseRule(),
 			NewAllowedToolsRule(),

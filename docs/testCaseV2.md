@@ -236,8 +236,8 @@ tests/e2e/
    - 执行 `skill-hub init`
    - 验证 `create` / `use` / `apply` 不写入 `preferred_target`
 
-3. **test_03_compatibility_metadata_does_not_filter_list()** - 兼容性说明不参与过滤
-   - 创建带不同 `compatibility` 说明的技能
+3. **test_03_list_returns_all_skills_without_target_metadata()** - 列表不依赖目标元数据
+   - 创建普通技能并确认全部列出
    - 验证 `skill-hub list` 不按该字段过滤
 
 4. **已移除目标覆盖场景**
@@ -352,7 +352,7 @@ tests/e2e/
    - 执行 `skill-hub search git`
    - 验证关键词搜索
 
-3. **test_03_search_ignores_compatibility_metadata()** - 搜索不按兼容性说明过滤 ⚠️网络依赖
+3. **test_03_search_uses_keywords_only()** - 搜索仅按关键词匹配 ⚠️网络依赖
    - 执行 `skill-hub search database`
    - 验证搜索只按关键词返回结果
 

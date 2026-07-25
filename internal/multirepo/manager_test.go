@@ -182,10 +182,9 @@ func TestListSkillsInRepository_UsesRegistryIndex(t *testing.T) {
 		Version: "1.0.0",
 		Skills: []spec.SkillMetadata{
 			{
-				ID:            "indexed-skill",
-				Name:          "Indexed Skill",
-				Version:       "1.2.3",
-				Compatibility: "open_code",
+				ID:      "indexed-skill",
+				Name:    "Indexed Skill",
+				Version: "1.2.3",
 			},
 		},
 	}
@@ -239,7 +238,6 @@ func TestManager_RebuildRepositoryIndex(t *testing.T) {
 name: Rebuilt Skill
 description: rebuilt from repo
 version: 1.0.0
-compatibility: open_code
 ---
 
 # Skill
@@ -296,7 +294,6 @@ func TestManager_ArchiveToDefaultRepository(t *testing.T) {
 name: Archived Skill
 description: archived into default repo
 version: 1.0.0
-compatibility: open_code
 ---
 
 # Skill
@@ -506,7 +503,6 @@ description: 测试技能
 version: 1.0.0
 author: test-author
 tags: test,example
-compatibility: open_code
 ---
 # 测试技能
 
@@ -569,10 +565,6 @@ compatibility: open_code
 		t.Errorf("期望第二个标签 '%s', 实际得到 '%s'", expectedTag2, metadata.Tags[1])
 	}
 
-	// 检查兼容性
-	if metadata.Compatibility != "open_code" {
-		t.Errorf("期望兼容性 'open_code', 实际得到 '%s'", metadata.Compatibility)
-	}
 }
 
 // writeRegistry writes a registry.json under the repository directory so that

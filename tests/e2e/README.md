@@ -37,7 +37,7 @@ Based on the business scenarios defined in the repo test documents and current C
 5. **Target Business Removal Workflow** (`test_scenario5.py`)
    - Removed target command/flag entrypoints fail
    - Standard workflows do not write `preferred_target`
-   - Compatibility metadata does not filter list results
+   - List results do not depend on target metadata
 
 6. **Skill Content Commands** (`test_skill_content_commands.py`)
    - **create**: New skill has standard structure (SKILL.md + scripts/, references/, assets/); when skill already exists, create validates and refreshes state for registration/archiving.

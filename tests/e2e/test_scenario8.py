@@ -50,14 +50,14 @@ class TestScenario8RemoteSkillSearch:
         result = home_cmd.run("init", cwd=str(self.project_dir))
         assert result.success, f"skill-hub init failed: {result.stderr}"
         
-        # Create test skills with different names and compatibility descriptions
+        # Create test skills with different names and descriptions.
         test_skills = [
-            {"name": "git-expert", "compatibility": "open_code", "description": "Git expert skill"},
-            {"name": "python-debugger", "compatibility": "open_code", "description": "Python debugging skill"},
-            {"name": "database-optimizer", "compatibility": "cursor", "description": "Database optimization"},
-            {"name": "git-helper", "compatibility": "both", "description": "Git helper utilities"},
-            {"name": "python-web", "compatibility": "open_code", "description": "Python web development"},
-            {"name": "database-migration", "compatibility": "cursor", "description": "Database migration tools"},
+            {"name": "git-expert", "description": "Git expert skill"},
+            {"name": "python-debugger", "description": "Python debugging skill"},
+            {"name": "database-optimizer", "description": "Database optimization"},
+            {"name": "git-helper", "description": "Git helper utilities"},
+            {"name": "python-web", "description": "Python web development"},
+            {"name": "database-migration", "description": "Database migration tools"},
         ]
         
         project_cmd = CommandRunner()
@@ -78,7 +78,6 @@ class TestScenario8RemoteSkillSearch:
                 with open(meta_file, 'r') as f:
                     meta = yaml.safe_load(f)
                 
-                meta['compatibility'] = skill['compatibility']
                 meta['description'] = skill['description']
                 
                 with open(meta_file, 'w') as f:
@@ -124,27 +123,27 @@ class TestScenario8RemoteSkillSearch:
         
         print(f"✓ Basic search results: {result.stdout[:150]}...")
     
-    def test_03_search_ignores_compatibility_metadata(self):
-        """Test 8.3: Search is not filtered by compatibility metadata"""
-        print("\n=== Test 8.3: Search Ignores Compatibility Metadata ===")
+    def test_03_search_uses_keywords_only(self):
+        """Test 8.3: Search is based on keywords only."""
+        print("\n=== Test 8.3: Keyword Search ===")
         
         # Setup test skills
         self._setup_test_skills()
         
-        # Search should use keyword matching only; compatibility metadata is display-only.
+        # Search should use keyword matching only.
         project_cmd = CommandRunner()
         result = project_cmd.run("search", ["database"], cwd=str(self.project_dir))
         
         assert result.success, f"skill-hub search failed: {result.stderr}"
         
         assert "database" in result.stdout.lower()
-        print(f"✓ Compatibility metadata did not filter database results: {result.stdout[:150]}...")
+        print(f"✓ Database keyword results: {result.stdout[:150]}...")
         
         # Test search for "python"
         result = project_cmd.run("search", ["python"], cwd=str(self.project_dir))
         assert result.success, f"skill-hub search failed: {result.stderr}"
         
-        # Should find python skills regardless of compatibility metadata.
+        # Should find python skills by keyword.
         assert "python" in result.stdout.lower()
         
         print(f"✓ Python search without target input: {result.stdout[:150]}...")

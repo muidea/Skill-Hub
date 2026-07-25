@@ -46,7 +46,6 @@ multi_repo:
 name: Main Skill
 description: main repo skill
 version: 1.0.0
-compatibility: open_code
 ---
 `), 0644); err != nil {
 		t.Fatalf("WriteFile(main skill) error = %v", err)
@@ -60,7 +59,6 @@ compatibility: open_code
 name: Community Skill
 description: community repo skill
 version: 2.0.0
-compatibility: cursor
 ---
 `), 0644); err != nil {
 		t.Fatalf("WriteFile(community skill) error = %v", err)

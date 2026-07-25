@@ -97,34 +97,6 @@ func DirectoryContentHash(dir string) (string, error) {
 	return ContentHash([]byte(strings.Join(entries, "\n"))), nil
 }
 
-func NormalizeCompatibility(compatData interface{}) string {
-	if compatData == nil {
-		return ""
-	}
-	switch v := compatData.(type) {
-	case string:
-		return v
-	case map[string]interface{}:
-		var compatList []string
-		if cursorVal, ok := v["cursor"].(bool); ok && cursorVal {
-			compatList = append(compatList, "Cursor")
-		}
-		if claudeVal, ok := v["claude_code"].(bool); ok && claudeVal {
-			compatList = append(compatList, "Claude Code")
-		}
-		if openCodeVal, ok := v["open_code"].(bool); ok && openCodeVal {
-			compatList = append(compatList, "OpenCode")
-		}
-		if shellVal, ok := v["shell"].(bool); ok && shellVal {
-			compatList = append(compatList, "Shell")
-		}
-		if len(compatList) > 0 {
-			return "Designed for " + strings.Join(compatList, ", ") + " (or similar AI coding assistants)"
-		}
-	}
-	return ""
-}
-
 func ParseSkillMetadata(content []byte, skillID string) (*spec.SkillMetadata, error) {
 	data, err := ParseFrontmatter(content)
 	if err != nil {
@@ -161,8 +133,6 @@ func ParseSkillMetadata(content []byte, skillID string) (*spec.SkillMetadata, er
 			meta.Tags[i] = strings.TrimSpace(tag)
 		}
 	}
-
-	meta.Compatibility = NormalizeCompatibility(data["compatibility"])
 
 	return meta, nil
 }
@@ -203,8 +173,6 @@ func ParseSkill(content []byte, skillID string) (*spec.Skill, error) {
 			s.Tags[i] = strings.TrimSpace(tag)
 		}
 	}
-
-	s.Compatibility = NormalizeCompatibility(data["compatibility"])
 
 	return s, nil
 }

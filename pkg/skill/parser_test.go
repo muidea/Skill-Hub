@@ -116,48 +116,8 @@ func TestContentHash(t *testing.T) {
 	}
 }
 
-func TestNormalizeCompatibility(t *testing.T) {
-	tests := []struct {
-		name  string
-		input interface{}
-		want  string
-	}{
-		{"nil", nil, ""},
-		{"string", "Custom compat", "Custom compat"},
-		{
-			"map with all true",
-			map[string]interface{}{
-				"cursor":      true,
-				"claude_code": true,
-				"open_code":   true,
-				"shell":       true,
-			},
-			"Designed for Cursor, Claude Code, OpenCode, Shell (or similar AI coding assistants)",
-		},
-		{
-			"map with partial",
-			map[string]interface{}{
-				"cursor":      true,
-				"claude_code": false,
-				"open_code":   true,
-			},
-			"Designed for Cursor, OpenCode (or similar AI coding assistants)",
-		},
-		{"empty map", map[string]interface{}{}, ""},
-		{"unsupported type", 42, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NormalizeCompatibility(tt.input)
-			if got != tt.want {
-				t.Fatalf("NormalizeCompatibility() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestParseSkillMetadata(t *testing.T) {
-	content := []byte("---\nname: my-skill\ndescription: A test skill\nversion: 2.0.0\nauthor: john\ntags: go, refactor\ncompatibility: Custom\n---\n# Content")
+	content := []byte("---\nname: my-skill\ndescription: A test skill\nversion: 2.0.0\nauthor: john\ntags: go, refactor\n---\n# Content")
 	meta, err := ParseSkillMetadata(content, "my-skill-id")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -180,9 +140,6 @@ func TestParseSkillMetadata(t *testing.T) {
 	}
 	if len(meta.Tags) != 2 || meta.Tags[0] != "go" || meta.Tags[1] != "refactor" {
 		t.Fatalf("Tags = %v", meta.Tags)
-	}
-	if meta.Compatibility != "Custom" {
-		t.Fatalf("Compatibility = %q", meta.Compatibility)
 	}
 }
 

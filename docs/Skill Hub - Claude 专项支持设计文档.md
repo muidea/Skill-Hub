@@ -36,7 +36,6 @@
 id: "claude-log-analyzer"
 name: "日志分析工具"
 version: "1.0.0"
-compatibility: Designed for Claude Code (or similar AI coding assistants)
 
 # Claude 专属扩展块 (遵循 skill-hub 规范)
 claude:

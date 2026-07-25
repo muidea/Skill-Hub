@@ -384,7 +384,6 @@ func (m *Manager) LoadSkill(skillID, repoName string) (*spec.Skill, error) {
 		Author:           skillMeta.Author,
 		Description:      skillMeta.Description,
 		Tags:             skillMeta.Tags,
-		Compatibility:    skillMeta.Compatibility,
 		Variables:        []spec.Variable{}, // 需要从技能文件解析
 		Dependencies:     []string{},        // 需要从技能文件解析
 		Repository:       skillMeta.Repository,

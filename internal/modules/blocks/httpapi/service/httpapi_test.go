@@ -89,7 +89,7 @@ func TestHTTPAPI_ListProjects(t *testing.T) {
 	}
 }
 
-func TestHTTPAPI_ListSkillsIncludesTotalAndShowsCompatibilityOnly(t *testing.T) {
+func TestHTTPAPI_ListSkillsIncludesTotal(t *testing.T) {
 	config.ResetForTest()
 	defer config.ResetForTest()
 
@@ -111,11 +111,8 @@ multi_repo:
 		t.Fatalf("write config.yaml: %v", err)
 	}
 
-	skills := map[string]string{
-		"open-code-skill": spec.TargetOpenCode,
-		"cursor-skill":    spec.TargetCursor,
-	}
-	for id, target := range skills {
+	skills := []string{"open-code-skill", "cursor-skill"}
+	for _, id := range skills {
 		skillDir := filepath.Join(homeDir, "repositories", "main", "skills", id)
 		if err := os.MkdirAll(skillDir, 0755); err != nil {
 			t.Fatalf("mkdir skill dir: %v", err)
@@ -124,7 +121,6 @@ multi_repo:
 name: ` + id + `
 description: test skill
 version: 1.0.0
-compatibility: ` + target + `
 ---
 `)
 		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), content, 0644); err != nil {
@@ -155,7 +151,7 @@ compatibility: ` + target + `
 		ids[item.ID] = true
 	}
 	if !ids["open-code-skill"] || !ids["cursor-skill"] {
-		t.Fatalf("expected compatibility metadata to be display-only, got %#v", ids)
+		t.Fatalf("expected both skills to be listed, got %#v", ids)
 	}
 }
 

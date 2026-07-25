@@ -22,7 +22,6 @@ class TestFeedbackAllJSON:
             f"""---
 name: {skill_id}
 description: Feedback all test skill {skill_id}.
-compatibility: Compatible with open_code
 metadata:
   version: "1.0.0"
   author: "tester"

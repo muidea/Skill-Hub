@@ -1,5 +1,4 @@
 ---
-compatibility: Designed for Claude Code, Cursor, and OpenCode (or similar AI coding assistants)
 description: Provides React + TypeScript development best practices. Use when building React applications with TypeScript, reviewing frontend code, or when the user asks about React patterns, TypeScript types, or modern frontend development.
 metadata:
   author: skill-hub Team

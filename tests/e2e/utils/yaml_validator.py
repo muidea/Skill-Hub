@@ -111,12 +111,6 @@ class YAMLValidator:
                     var_errors = self._validate_variable(var, i)
                     errors.extend(var_errors)
         
-        # compatibility is optional metadata and is no longer target-gating.
-        if "compatibility" in content:
-            compat = content["compatibility"]
-            if not isinstance(compat, (str, dict)):
-                warnings.append("compatibility字段建议使用字符串或对象")
-        
         # 元数据检查
         if "metadata" in content:
             metadata = content["metadata"]
@@ -336,7 +330,6 @@ class YAMLValidator:
             "name": skill_id,
             "description": description or f"{skill_id}技能",
             "version": "1.0.0",
-            "compatibility": "Designed for Cursor, Claude Code, and OpenCode",
             "metadata": {
                 "author": "skill-hub User",
                 "tags": ["skill", "template"],

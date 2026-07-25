@@ -271,7 +271,6 @@ func SetupTestSkillHub(t *testing.T) (skillHubHome, repoDir, projectDir string) 
 name: test-skill-1
 description: Test skill 1
 version: 1.0.0
-compatibility: open_code
 ---
 # Test Skill 1
 
@@ -281,7 +280,6 @@ This is a test skill.`)
 name: test-skill-2
 description: Test skill 2
 version: 1.0.0
-compatibility: open_code
 ---
 # Test Skill 2
 

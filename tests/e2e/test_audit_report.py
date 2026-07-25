@@ -26,7 +26,6 @@ class TestAuditReport:
             """---
 name: audit-skill
 description: Skill used by audit report tests.
-compatibility: Compatible with open_code
 metadata:
   version: "1.0.0"
   author: "tester"

@@ -8,7 +8,6 @@ import (
 	"unicode"
 
 	"github.com/muidea/skill-hub/pkg/validator"
-	"gopkg.in/yaml.v3"
 )
 
 // Fix represents a single fix that can be applied to a skill
@@ -273,17 +272,6 @@ func (c *Converter) getAvailableFixes(result *validator.ValidationResult) []Fix 
 		}
 	}
 
-	// Check warnings for compatibility format issues
-	for _, warn := range result.Warnings {
-		if warn.Code == validator.WarnCompatObjectFormat {
-			fixes = append(fixes, Fix{
-				Description: "Convert compatibility object to string format",
-				Apply:       c.fixCompatibilityFormat,
-				CanFix:      true,
-			})
-		}
-	}
-
 	// Always check for missing metadata fields
 	fixes = append(fixes, Fix{
 		Description: "Add default version (1.0.0) if missing",
@@ -346,84 +334,6 @@ func toTitleCase(s string) string {
 // fixMissingDescription adds a placeholder description
 func (c *Converter) fixMissingDescription(content string) (string, error) {
 	return c.addFrontmatterField(content, "description", "A skill for AI coding assistants")
-}
-
-// fixCompatibilityFormat converts compatibility object to string format
-func (c *Converter) fixCompatibilityFormat(content string) (string, error) {
-	lines := strings.Split(content, "\n")
-	inFrontmatter := false
-	frontmatterEnd := -1
-
-	// Find frontmatter boundaries
-	for i, line := range lines {
-		if line == "---" {
-			if !inFrontmatter {
-				inFrontmatter = true
-			} else {
-				frontmatterEnd = i
-				break
-			}
-		}
-	}
-
-	if frontmatterEnd == -1 {
-		return content, fmt.Errorf("invalid frontmatter format")
-	}
-
-	// Parse frontmatter
-	frontmatterLines := lines[1:frontmatterEnd]
-	frontmatterContent := strings.Join(frontmatterLines, "\n")
-
-	var data map[string]interface{}
-	if err := yaml.Unmarshal([]byte(frontmatterContent), &data); err != nil {
-		return content, fmt.Errorf("failed to parse frontmatter: %w", err)
-	}
-
-	// Check if compatibility is an object
-	if compatObj, ok := data["compatibility"].(map[string]interface{}); ok {
-		var compatList []string
-
-		// Convert object to string list
-		if cursorVal, ok := compatObj["cursor"].(bool); ok && cursorVal {
-			compatList = append(compatList, "Cursor")
-		}
-		if claudeVal, ok := compatObj["claude_code"].(bool); ok && claudeVal {
-			compatList = append(compatList, "Claude Code")
-		}
-		if openCodeVal, ok := compatObj["open_code"].(bool); ok && openCodeVal {
-			compatList = append(compatList, "OpenCode")
-		}
-		if shellVal, ok := compatObj["shell"].(bool); ok && shellVal {
-			compatList = append(compatList, "Shell")
-		}
-
-		// Create new compatibility string
-		var compatString string
-		if len(compatList) > 0 {
-			compatString = "Designed for " + strings.Join(compatList, ", ") + " (or similar AI coding assistants)"
-		} else {
-			compatString = ""
-		}
-
-		// Update the compatibility field in data
-		data["compatibility"] = compatString
-
-		// Re-serialize YAML
-		newYaml, err := yaml.Marshal(data)
-		if err != nil {
-			return content, fmt.Errorf("failed to marshal updated frontmatter: %w", err)
-		}
-
-		// Reconstruct the file
-		newLines := []string{"---"}
-		newLines = append(newLines, strings.Split(strings.TrimSpace(string(newYaml)), "\n")...)
-		newLines = append(newLines, "---")
-		newLines = append(newLines, lines[frontmatterEnd+1:]...)
-
-		return strings.Join(newLines, "\n"), nil
-	}
-
-	return content, nil
 }
 
 // fixMissingVersion adds a default version

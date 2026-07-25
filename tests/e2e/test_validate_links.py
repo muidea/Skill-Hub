@@ -29,7 +29,6 @@ class TestValidateLinks:
             """---
 name: link-skill
 description: Skill with markdown links.
-compatibility: Compatible with open_code
 metadata:
   version: "1.0.0"
   author: "tester"

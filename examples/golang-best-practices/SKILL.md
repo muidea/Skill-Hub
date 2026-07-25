@@ -1,5 +1,4 @@
 ---
-compatibility: Designed for Claude Code, Cursor, and OpenCode (or similar AI coding assistants)
 description: Provides Go language best practices and coding standards guidance. Use when writing Go code, reviewing Go projects, or when the user asks about Go conventions, patterns, or style guides.
 metadata:
   author: skill-hub Team

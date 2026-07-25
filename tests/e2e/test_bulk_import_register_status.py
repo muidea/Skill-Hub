@@ -36,7 +36,6 @@ class TestBulkImportRegisterStatus:
             """---
 name: manual-skill
 description: Existing manual skill for register coverage.
-compatibility: Compatible with open_code
 metadata:
   version: "1.0.0"
   author: "tester"
@@ -79,7 +78,6 @@ Use this skill in tests.
         assert repaired.startswith("---\n")
         assert "name: legacy-skill" in repaired
         assert "description: This legacy body should stay exactly the same." in repaired
-        assert "compatibility:" not in repaired
         assert "version: 1.0.0" in repaired
         assert repaired.split("---\n", 2)[2] == body
         assert list(skill_md.parent.glob("SKILL.md.bak.*")), "backup file was not created"
@@ -95,7 +93,6 @@ Use this skill in tests.
             """---
 name: import-valid
 description: Valid imported skill for archive coverage.
-compatibility: Compatible with open_code
 metadata:
   version: "1.2.3"
   author: "tester"

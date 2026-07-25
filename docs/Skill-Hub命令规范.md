@@ -223,12 +223,12 @@ skill-hub init https://github.com/example/skills-repo.git
 
 **选项**:
 - `--pattern <glob>`: 使用 skill-hub 类 glob 语法匹配仓库技能 ID 字段，`*` 可跨 `/`。可重复使用以匹配多个 pattern。详见 §6。
-- `--verbose`: 显示详细信息，包括技能描述、版本、适用说明等。
+- `--verbose`: 显示详细信息，包括技能描述、版本、标签和作者等。
 - `--repo <repo-name>`: 按仓库名称过滤技能列表（可多次使用指定多个仓库）。
 
 **功能描述**:
 
-显示所有已启用仓库中的技能，支持按仓库过滤和按 ID pattern 过滤。默认显示简要列表，包含技能 ID、状态、版本、所属仓库和适用范围信息。提供 pattern 时按 `ID` 字段做 glob 匹配；不带 pattern 时等同于 `**`（全部）。
+显示所有已启用仓库中的技能，支持按仓库过滤和按 ID pattern 过滤。默认显示简要列表，包含技能 ID、名称、版本和所属仓库。提供 pattern 时按 `ID` 字段做 glob 匹配；不带 pattern 时等同于 `**`（全部）。
 
 当前实现补充：
 
@@ -302,7 +302,7 @@ skill-hub search database --limit 10
 
 **功能描述**:
 
-在项目工作区创建一个新技能。不写入项目 target，也不主动写入技能 `compatibility` 声明。生成的 `SKILL.md` 默认使用中文定义，包括适用场景、工作流程、输出要求和注意事项；命令、文件路径、API 名称等技术标识保留原始写法。
+在项目工作区创建一个新技能。不写入项目 target 或工具适配范围元数据。生成的 `SKILL.md` 默认使用中文定义，包括适用场景、工作流程、输出要求和注意事项；命令、文件路径、API 名称等技术标识保留原始写法。
 
 生成的技能目录结构包含：`SKILL.md`（核心定义）、`scripts/`（可执行脚本）、`references/`（参考资料）、`assets/`（静态资源）。`SKILL.md` 模板必须包含 `Formatter` 段，默认声明 Markdown/YAML 校验方式，并要求在新增脚本或代码时补充对应的可执行 formatter 命令。若该技能已存在（同名目录下已有 `SKILL.md`），则主动进行验证。验证通过时：若该技能已在本地仓库 state 中登记且与仓库内容一致，则不执行任何操作；否则刷新项目状态（state.json），便于技能登记与归档。验证不通过时提示是否重新创建。
 
@@ -536,7 +536,7 @@ skill-hub remove --pattern 'git-*'
 
 验证指定技能在项目工作区中的本地文件是否合规，包括检查 `SKILL.md` 的 YAML 语法、必需字段和基本文件结构。
 
-`--fix` 会为 legacy `SKILL.md` 补齐最小 frontmatter：`name`、`description`、`metadata.version`、`metadata.author`。`compatibility` 已降级为可选说明字段，不再由修复流程主动补写。`name` 使用技能目录名，`description` 优先从正文首个有效段落推断，版本默认 `1.0.0`。修复只重写 frontmatter，不改写正文内容。
+`--fix` 会为 legacy `SKILL.md` 补齐最小 frontmatter：`name`、`description`、`metadata.version`、`metadata.author`。`name` 使用技能目录名，`description` 优先从正文首个有效段落推断，版本默认 `1.0.0`。修复只重写 frontmatter，不改写正文内容。
 
 `--links` 会解析技能目录内 Markdown 文件中的本地链接。外部 HTTP/HTTPS 链接默认跳过；本地链接会按源文件目录、技能目录、项目根目录依次解析，任一目标存在即视为通过。缺失目标会以 `source_file`、`line`、`link`、`resolved_path` 输出，JSON 报告中汇总为 `link_issues`。
 
@@ -1368,7 +1368,7 @@ skill-hub repo rebuild-index skills-repo --json
 | 1.23 | 2026-04-19 | CLI bridge 保留服务端错误码，Web UI 管理端增强只读与密钥错误提示 |
 | 1.24 | 2026-04-25 | 增加 `upgrade` 自升级命令，复用 GitHub Release 资产、sha256 校验、agent workflow skills 同步和 serve 重启约定 |
 | 1.24 | 2026-04-20 | Web UI 目录页技能总数改用服务端 `total`，管理端移除写入密钥入口 |
-| 1.25 | 2026-04-20 | 弱化 Skill `compatibility` 处理，列表/搜索/Web UI 不再按兼容性硬过滤 |
+| 1.25 | 2026-04-20 | 移除技能工具适配范围的数据模型、展示和筛选逻辑 |
 | 1.26 | 2026-04-20 | `target` 降级为兼容输入，Web UI 不再展示目标选择，项目业务统一使用 `.agents/skills` |
 | 1.27 | 2026-04-20 | `serve --secret-key` 收口为远端推送保护，未配置时允许仓库拉取/同步，仅禁止默认仓库 push |
 | 1.28 | 2026-04-23 | 增加 `use/apply/status/remove --global` 本机全局技能状态、agent 目录检查刷新、服务桥接和 manifest 冲突保护 |

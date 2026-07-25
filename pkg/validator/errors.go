@@ -39,10 +39,6 @@ const (
 	ErrDescTooShort = "DESC_TOO_SHORT"
 	ErrDescTooLong  = "DESC_TOO_LONG"
 
-	// compatibility字段错误
-	ErrCompatTooLong   = "COMPAT_TOO_LONG"
-	ErrCompatWrongType = "COMPAT_WRONG_TYPE"
-
 	// metadata字段错误
 	ErrMetadataWrongType = "METADATA_WRONG_TYPE"
 	ErrMetadataValueType = "METADATA_VALUE_TYPE"
@@ -63,10 +59,6 @@ const (
 	// description质量警告
 	WarnDescTooShort   = "DESC_TOO_SHORT_WARNING"
 	WarnDescNoSentence = "DESC_NO_SENTENCE"
-
-	// legacy compatibility格式警告
-	WarnCompatObjectFormat = "COMPAT_OBJECT_FORMAT"
-	WarnCompatUnknownType  = "COMPAT_UNKNOWN_TYPE"
 
 	// metadata警告
 	WarnMetadataWrongType = "METADATA_WRONG_TYPE_WARNING"
@@ -98,8 +90,6 @@ var errorMessages = map[string]string{
 	ErrNameDoubleDash:        "name不能有连续连字符",
 	ErrDescTooShort:          "description长度无效: 必须至少1个字符",
 	ErrDescTooLong:           "description长度无效: 不能超过1024个字符",
-	ErrCompatTooLong:         "compatibility太长: 不能超过500个字符",
-	ErrCompatWrongType:       "compatibility字段类型不符合规范",
 	ErrMetadataWrongType:     "metadata字段类型不符合规范",
 	ErrMetadataValueType:     "metadata值类型不符合规范",
 	ErrLicenseWrongType:      "license字段类型不符合规范",
@@ -112,8 +102,6 @@ var errorMessages = map[string]string{
 var warningMessages = map[string]string{
 	WarnDescTooShort:          "description可能太短，建议提供更详细的描述",
 	WarnDescNoSentence:        "description应该包含完整的句子",
-	WarnCompatObjectFormat:    "compatibility对象格式保留为历史兼容",
-	WarnCompatUnknownType:     "compatibility字段类型为非标准说明",
 	WarnMetadataWrongType:     "metadata字段类型可能不符合规范",
 	WarnMetadataValueType:     "metadata值类型可能不符合规范",
 	WarnLicenseWrongType:      "license字段类型可能不符合规范",

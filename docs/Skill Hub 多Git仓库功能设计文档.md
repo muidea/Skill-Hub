@@ -144,7 +144,6 @@ type Skill struct {
     Author           string        `yaml:"author" json:"author"`
     Description      string        `yaml:"description" json:"description"`
     Tags             []string      `yaml:"tags" json:"tags"`
-    Compatibility    string        `yaml:"compatibility,omitempty" json:"compatibility,omitempty"`
     Variables        []Variable    `yaml:"variables" json:"variables"`
     Dependencies     []string      `yaml:"dependencies" json:"dependencies"`
     Claude           *ClaudeConfig `yaml:"claude,omitempty" json:"claude,omitempty"`
@@ -163,7 +162,6 @@ type SkillMetadata struct {
     Author           string   `json:"author"`
     Description      string   `json:"description"`
     Tags             []string `json:"tags"`
-    Compatibility    string   `json:"compatibility,omitempty"`
     Repository       string   `json:"repository,omitempty"`           // 源仓库名称
     RepositoryPath   string   `json:"repository_path,omitempty"`      // 仓库内路径
     RepositoryCommit string   `json:"repository_commit,omitempty"`    // 仓库提交哈希

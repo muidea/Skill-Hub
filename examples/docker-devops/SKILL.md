@@ -1,5 +1,4 @@
 ---
-compatibility: Designed for Claude Code, Cursor, and OpenCode (or similar AI coding assistants)
 description: Provides Docker containerization and DevOps best practices. Use when working with Docker, container orchestration, CI/CD pipelines, or when the user asks about containerization, DevOps workflows, or infrastructure as code.
 metadata:
   author: skill-hub Team

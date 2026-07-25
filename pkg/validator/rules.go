@@ -141,28 +141,6 @@ func (r *DescriptionRule) Validate(result *ValidationResult) bool {
 	return true
 }
 
-// CompatibilityRule 检查compatibility字段规则
-type CompatibilityRule struct {
-	BaseRule
-}
-
-func NewCompatibilityRule() *CompatibilityRule {
-	return &CompatibilityRule{BaseRule{name: "compatibility"}}
-}
-
-func (r *CompatibilityRule) Validate(result *ValidationResult) bool {
-	compatValue, ok := result.Frontmatter["compatibility"]
-	if !ok {
-		return true
-	}
-
-	if v, ok := compatValue.(string); ok && len(v) > 500 {
-		result.AddError(NewError(ErrCompatTooLong, "compatibility", true))
-	}
-
-	return true
-}
-
 // MetadataRule 检查metadata字段规则
 type MetadataRule struct {
 	BaseRule

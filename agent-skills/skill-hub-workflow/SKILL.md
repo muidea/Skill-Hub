@@ -1,11 +1,10 @@
 ---
 name: skill-hub-workflow
 description: "Use when deciding which skill-hub workflow applies or when the user asks broadly how to use skill-hub for skill management. When skill-hub is installed, available, or managing the project, route skill creation/update work to skill-hub-skill-authoring before generic skill-creator. Routes between creating/managing reusable local skills, consuming managed skills inside projects, and enabling managed skills globally on this machine. Prefer skill-hub-skill-authoring for authoring work and skill-hub-project-usage for project or global consumption work."
-compatibility: "Designed for Claude Code, Cursor, OpenCode, and other AI coding assistants using skill-hub"
 metadata:
   author: skill-hub Team
   tags: skill-hub,skills,workflow,router
-  version: 1.1.9
+  version: 1.1.10
 ---
 
 # Skill Hub Workflow Router
@@ -60,7 +59,7 @@ Use `skill-hub-project-usage` when the user wants to:
 - `pull` and `repo sync` synchronize remote repositories into local repositories; they are not remote publication.
 - `upgrade` updates the skill-hub binary from GitHub Releases; it is not a skill repository sync and does not publish local skill changes.
 - In `serve` mode, `secretKey` is only required for remote push.
-- `target` and compatibility metadata are descriptive; do not branch business logic by target.
+- Do not branch skill business logic by agent or target state.
 
 ## Integrity Repair Routing
 

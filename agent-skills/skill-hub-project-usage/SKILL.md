@@ -1,11 +1,10 @@
 ---
 name: skill-hub-project-usage
 description: "Use when helping an application or business project consume skills already managed by skill-hub, or when enabling managed skills globally on this machine for Codex, OpenCode, or Claude. Guides agents through initializing the project when needed, syncing repositories, listing/searching managed skills before use, selecting a suitable skill only when one exists, enabling skills with use or use --global, applying them to .agents/skills or agent global skills directories, checking status, and feeding project-local improvements back to the local skill repository without pushing remotely unless explicitly requested."
-compatibility: "Designed for Claude Code, Cursor, OpenCode, and other AI coding assistants using skill-hub"
 metadata:
   author: skill-hub Team
   tags: skill-hub,project-usage,skills,apply,use
-  version: 1.0.7
+  version: 1.0.8
 ---
 
 # Skill Hub Project Usage
@@ -138,7 +137,7 @@ When multiple repositories contain the same skill ID, choose based on project in
 
 If `use` prints `该技能没有可配置的变量`, continue normally. It means the skill has no `variables` entries to prompt for.
 
-Do not choose skills by `target`, `preferred_target`, or hard compatibility filtering. Compatibility text is descriptive metadata.
+Do not choose skills by `target` or `preferred_target`; those historical fields do not affect skill selection.
 
 ## Working With Applied Skills
 

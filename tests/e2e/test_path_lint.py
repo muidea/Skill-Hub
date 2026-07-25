@@ -23,7 +23,6 @@ class TestPathLint:
             """---
 name: path-skill
 description: Skill with local paths for lint coverage.
-compatibility: Compatible with open_code
 metadata:
   version: "1.0.0"
   author: "tester"

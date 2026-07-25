@@ -15,7 +15,6 @@ def test_skill_template():
     return """---
 name: my-logic-skill
 description: 逻辑测试技能，用于端到端测试 - 完全匹配验证
-compatibility: Designed for Cursor, Claude Code, and OpenCode
 metadata:
   version: 1.0.0
   author: E2E Test Team
@@ -64,7 +63,6 @@ def simple_skill_template():
     return """---
 name: simple-test-skill
 description: 简单测试技能
-compatibility: all
 metadata:
   version: 1.0.0
   author: Test User
@@ -90,7 +88,6 @@ def invalid_skill_template():
     return """---
 name: invalid-skill
 # 缺少必需的description字段
-compatibility: Invalid Tool  # 无效的兼容性声明
 metadata:
   version: not-a-version  # 无效的版本格式
 variables:
@@ -112,7 +109,6 @@ def skill_with_variables():
     return """---
 name: variable-test-skill
 description: 变量测试技能
-compatibility: all
 metadata:
   version: 1.0.0
 variables:
@@ -150,7 +146,6 @@ def opencode_skill_template():
     return """---
 name: opencode-test-skill
 description: OpenCode测试技能
-compatibility: open_code
 metadata:
   version: 1.0.0
   author: OpenCode Test
@@ -188,7 +183,6 @@ def cursor_skill_template():
     return """---
 name: cursor-test-skill
 description: Cursor测试技能
-compatibility: cursor
 metadata:
   version: 1.0.0
   author: Cursor Test
@@ -238,7 +232,6 @@ def temporary_skill_dir(test_skill_template):
     yaml_content = """name: my-logic-skill
 description: 逻辑测试技能
 version: 1.0.0
-compatibility: all
 metadata:
   author: Test User
   tags: [test]
@@ -324,7 +317,6 @@ def skill_validation_data():
             "name": "valid-test-skill",
             "description": "有效的测试技能",
             "version": "1.0.0",
-            "compatibility": "all",
             "variables": [
                 {"name": "VAR1", "default": "value1", "description": "变量1"}
             ]
@@ -338,7 +330,6 @@ def skill_validation_data():
             "name": "invalid-version-skill",
             "description": "无效版本技能",
             "version": "not-a-version",  # 无效版本
-            "compatibility": "all"
         },
         "invalid_variables": {
             "name": "invalid-vars-skill",

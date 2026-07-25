@@ -20,7 +20,6 @@ class TestDedupeSyncCopies:
             f"""---
 name: {skill_id}
 description: {description}
-compatibility: Compatible with open_code
 metadata:
   version: "1.0.0"
   author: "tester"

@@ -296,7 +296,6 @@ class TestServiceMode:
             assert "target-filter" not in index_doc.ids
             assert "target-filter" not in index_doc.selects
             assert 'name="target"' not in index_html
-            assert 'compatibility || "通用"' not in index_html
             assert "刷新技能目录" in index_doc.buttons
             assert "进入管理端" in index_doc.buttons
             assert "/api/v1/skills" in index_html
@@ -514,7 +513,6 @@ class TestServiceMode:
             """---
 name: service-register
 description: Service bridge register skill.
-compatibility: Compatible with open_code
 metadata:
   version: "1.0.0"
   author: "tester"
@@ -612,7 +610,6 @@ Read [service doc](docs/service.md).
         root_content = """---
 name: service-dup
 description: Canonical service duplicate skill.
-compatibility: Compatible with open_code
 metadata:
   version: "1.0.0"
   author: "tester"

@@ -1,9 +1,8 @@
 """
 Test Scenario 5: Target entrypoints are removed from business workflows.
 
-The target concept is retained only as legacy compatibility metadata when a
-skill explicitly documents it. CLI inputs and project state must not use it to
-select, validate, filter, or apply skills.
+CLI inputs and project state must not use target information to select,
+validate, filter, or apply skills.
 """
 
 import json
@@ -70,17 +69,17 @@ class TestScenario5TargetBusinessRemoval:
         assert project_state.get("preferred_target", "") == ""
         assert skill_id in project_state.get("skills", {})
 
-    def test_03_compatibility_metadata_does_not_filter_list(self):
-        """List should return all skills and only display compatibility metadata."""
-        self._create_repo_skill("compat-open-code", "open_code")
-        self._create_repo_skill("compat-cursor", "cursor")
+    def test_03_list_returns_all_skills_without_target_metadata(self):
+        """List should return all skills without a target metadata model."""
+        self._create_repo_skill("general-skill-one")
+        self._create_repo_skill("general-skill-two")
 
         result = self.cmd.run("list", cwd=str(self.project_dir))
         assert result.success, f"list failed: {result.stderr}"
-        assert "compat-open-code" in result.stdout
-        assert "compat-cursor" in result.stdout
+        assert "general-skill-one" in result.stdout
+        assert "general-skill-two" in result.stdout
 
-    def _create_repo_skill(self, skill_id: str, compatibility: str):
+    def _create_repo_skill(self, skill_id: str):
         result = self.cmd.run("create", [skill_id], cwd=str(self.project_dir), input_text="\n")
         assert result.success, f"create failed for {skill_id}: {result.stderr}"
         skill_dir = self.project_skills_dir / skill_id
@@ -89,9 +88,8 @@ class TestScenario5TargetBusinessRemoval:
                 [
                     "---",
                     f"name: {skill_id}",
-                    "description: compatibility metadata regression skill",
+                    "description: targetless metadata regression skill",
                     "version: 1.0.0",
-                    f"compatibility: {compatibility}",
                     "---",
                     "",
                     "# Regression Skill",
