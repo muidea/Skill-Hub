@@ -107,7 +107,7 @@ skill-hub upgrade --check
 skill-hub upgrade --yes
 ```
 
-`upgrade` 会下载当前系统架构对应的 `.tar.gz` 发布包，校验配套 `.sha256`，预执行新版 `skill-hub --version`，再替换当前二进制。升级完成后默认同步 release 内置 `skill-hub-*` agent workflow skills，并重启已注册且正在运行的 `serve` 实例。可用 `--skip-agent-skills` 跳过 skill 同步，用 `--no-restart-serve` 跳过 serve 重启。Linux 与 macOS 支持自动替换；Windows 当前请继续使用安装脚本或手动下载 Release 包。
+`upgrade` 会下载当前系统架构对应的 `.tar.gz` 发布包，校验配套 `.sha256`，预执行新版 `skill-hub --version`，再替换当前二进制。升级完成后默认仅同步 release 内置 `skill-hub-*` workflow skills 到工具无关目录，不会覆盖由 `apply --global` 托管的全局 skills 目录，并重启已注册且正在运行的 `serve` 实例。可用 `--skip-agent-skills` 跳过 skill 同步，用 `--no-restart-serve` 跳过 serve 重启。Linux 与 macOS 支持自动替换；Windows 当前请继续使用安装脚本或手动下载 Release 包。
 
 ### 3. 从源码编译
 

@@ -90,19 +90,8 @@ func TestInstallLatestInstallsBundledAgentSkills(t *testing.T) {
 	installBlock := sectionBetween(t, content, "install_agent_skills()", "# 主函数")
 	for _, expected := range []string{
 		"SKILL_HUB_INSTALL_AGENT_SKILLS",
-		"SKILL_HUB_INSTALL_CODEX_SKILLS",
-		"SKILL_HUB_INSTALL_OPENCODE_SKILLS",
-		"SKILL_HUB_INSTALL_CLAUDE_SKILLS",
 		"SKILL_HUB_AGENT_SKILLS_DIR",
-		"CODEX_SKILLS_DIR",
-		"OPENCODE_SKILLS_DIR",
-		"CLAUDE_SKILLS_DIR",
 		`${XDG_DATA_HOME:-$HOME/.local/share}/skill-hub/agent-skills`,
-		`${CODEX_HOME:-$HOME/.codex}`,
-		`$codex_home/skills`,
-		`${OPENCODE_HOME:-$HOME/.config/opencode}`,
-		`$opencode_home/skills`,
-		`$HOME/.claude/skills`,
 		"skill-hub-*",
 		"SKILL.md",
 	} {
@@ -115,8 +104,15 @@ func TestInstallLatestInstallsBundledAgentSkills(t *testing.T) {
 	if !strings.Contains(postInstallBlock, `install_agent_skills "agent-skills"`) {
 		t.Fatalf("installer should install bundled agent skills after installing the binary")
 	}
-	if !strings.Contains(installBlock, "command -v codex") || !strings.Contains(installBlock, "command -v opencode") {
-		t.Fatalf("installer should detect installed agents before mirroring skills")
+	for _, unexpected := range []string{
+		"install_detected_agent_skill_mirrors",
+		"SKILL_HUB_INSTALL_CODEX_SKILLS",
+		"SKILL_HUB_INSTALL_OPENCODE_SKILLS",
+		"SKILL_HUB_INSTALL_CLAUDE_SKILLS",
+	} {
+		if strings.Contains(installBlock, unexpected) {
+			t.Fatalf("installer must not mirror bundled skills into managed global directories: %q", unexpected)
+		}
 	}
 	if !strings.Contains(content, "Agent Skills") {
 		t.Fatalf("install summary should report agent skills installation")

@@ -12,19 +12,9 @@
 ${XDG_DATA_HOME:-$HOME/.local/share}/skill-hub/agent-skills
 ```
 
-安装脚本会检测当前系统中已安装或已有配置目录的 agent，再同步镜像到对应全局 skills 目录。当前支持的自动检测镜像包括 Codex 与 OpenCode；Claude 仅在 `~/.claude/skills` 已存在或用户显式指定 `CLAUDE_SKILLS_DIR` / `SKILL_HUB_INSTALL_CLAUDE_SKILLS=1` 时镜像。Codex 默认目录示例：
+安装脚本与 `upgrade` 只同步到上述工具无关目录，不会直接写入任何全局 skills 目录。全局目录只能由 `skill-hub use --global` 与 `skill-hub apply --global` 管理，以确保每个托管副本都带有 `.skill-hub-manifest.json`，不会因二进制升级而被覆盖为非托管目录。
 
-```bash
-${CODEX_HOME:-$HOME/.codex}/skills
-```
-
-OpenCode 默认目录示例：
-
-```bash
-${OPENCODE_HOME:-$HOME/.config/opencode}/skills
-```
-
-可通过 `SKILL_HUB_INSTALL_AGENT_SKILLS=0` 跳过所有 agent skills 安装，通过 `SKILL_HUB_AGENT_SKILLS_DIR=/path/to/skills` 覆盖工具无关目录。Codex、OpenCode、Claude 镜像分别可用 `SKILL_HUB_INSTALL_CODEX_SKILLS=0`、`SKILL_HUB_INSTALL_OPENCODE_SKILLS=0`、`SKILL_HUB_INSTALL_CLAUDE_SKILLS=0` 关闭，也可用 `CODEX_SKILLS_DIR`、`OPENCODE_SKILLS_DIR`、`CLAUDE_SKILLS_DIR` 覆盖目标目录。安装脚本只覆盖 release 内置的 `skill-hub-*` workflow skills，不扫描或删除其他用户 skill。
+可通过 `SKILL_HUB_INSTALL_AGENT_SKILLS=0` 跳过所有内置 workflow skills 同步，通过 `SKILL_HUB_AGENT_SKILLS_DIR=/path/to/skills` 覆盖工具无关目录。安装脚本只覆盖该专属目录下 release 内置的 `skill-hub-*` workflow skills，不扫描或删除其他用户 skill。
 
 内置 `upgrade` 命令复用同一套 GitHub Release 资产和 agent workflow skills 安装约定。Linux 与 macOS 支持自动替换当前二进制；Windows 当前只提示使用安装脚本或手动下载 Release 包。
 
@@ -912,7 +902,7 @@ skill-hub push --dry-run --json
 - `--dry-run`: 生成升级计划，不下载或替换二进制。
 - `--force`: 允许重新安装当前版本或安装低于当前版本的指定版本。
 - `--json`: 输出机器可读检测或执行结果。
-- `--skip-agent-skills`: 升级二进制后跳过 release 内置 `skill-hub-*` agent workflow skills 同步。
+- `--skip-agent-skills`: 升级二进制后跳过 release 内置 `skill-hub-*` workflow skills 同步。
 - `--no-restart-serve`: 升级后不自动重启已注册且正在运行的 `serve` 实例。
 
 **功能描述**:
@@ -921,7 +911,7 @@ skill-hub push --dry-run --json
 
 Linux 与 macOS 支持自动替换当前运行中的二进制。Windows 当前不做运行中自动替换，命令会返回明确提示，用户需继续使用安装脚本或手动下载 Release 包。
 
-升级成功后，默认同步 release 内置 `skill-hub-*` agent workflow skills 到工具无关目录和检测到的 agent 全局 skills 目录，并尝试重启已注册且正在运行的 `serve` 实例。该命令不依赖项目初始化，也不修改技能仓库或项目工作区。
+升级成功后，默认同步 release 内置 `skill-hub-*` workflow skills 到工具无关目录，并尝试重启已注册且正在运行的 `serve` 实例。该命令不依赖项目初始化，也不修改技能仓库、项目工作区或全局托管 skills 目录。
 
 **示例**:
 ```bash

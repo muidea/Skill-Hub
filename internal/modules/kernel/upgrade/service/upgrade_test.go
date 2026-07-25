@@ -45,6 +45,40 @@ func TestNewUsesReleaseDownloadTimeout(t *testing.T) {
 	}
 }
 
+func TestInstallBundledAgentSkillsUsesDedicatedDirectoryOnly(t *testing.T) {
+	tempDir := t.TempDir()
+	sourceDir := filepath.Join(tempDir, "agent-skills")
+	skillDir := filepath.Join(sourceDir, "skill-hub-workflow")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("mkdir bundled skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("bundled workflow"), 0644); err != nil {
+		t.Fatalf("write bundled skill: %v", err)
+	}
+
+	dedicatedDir := filepath.Join(tempDir, "bundled-skills")
+	codexDir := filepath.Join(tempDir, "codex-skills")
+	opencodeDir := filepath.Join(tempDir, "opencode-skills")
+	claudeDir := filepath.Join(tempDir, "claude-skills")
+	t.Setenv("SKILL_HUB_AGENT_SKILLS_DIR", dedicatedDir)
+	t.Setenv("CODEX_SKILLS_DIR", codexDir)
+	t.Setenv("OPENCODE_SKILLS_DIR", opencodeDir)
+	t.Setenv("CLAUDE_SKILLS_DIR", claudeDir)
+
+	count, warnings := installBundledAgentSkills(sourceDir)
+	if count != 1 || len(warnings) != 0 {
+		t.Fatalf("installBundledAgentSkills() = (%d, %v), want (1, nil)", count, warnings)
+	}
+	if _, err := os.Stat(filepath.Join(dedicatedDir, "skill-hub-workflow", "SKILL.md")); err != nil {
+		t.Fatalf("bundled skill was not installed into dedicated directory: %v", err)
+	}
+	for _, dir := range []string{codexDir, opencodeDir, claudeDir} {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("bundled skill installer must not write managed global directory %q: %v", dir, err)
+		}
+	}
+}
+
 func TestUpgradeDownloadsVerifiesAndReplacesBinary(t *testing.T) {
 	tempDir := t.TempDir()
 	archivePath := filepath.Join(tempDir, "skill-hub-linux-amd64.tar.gz")

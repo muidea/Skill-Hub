@@ -267,69 +267,6 @@ install_agent_skills() {
 
     echo "  安装到 skill-hub 通用目录: $primary_dir"
     install_agent_skills_to_dir "$source_dir" "$primary_dir" "skill-hub"
-
-    install_detected_agent_skill_mirrors "$source_dir" "$primary_dir"
-}
-
-is_agent_mirror_disabled() {
-    case "$1" in
-        0|false|False|FALSE|no|No|NO|off|Off|OFF)
-            return 0
-            ;;
-    esac
-    return 1
-}
-
-install_agent_skill_mirror() {
-    local source_dir="$1"
-    local primary_dir="$2"
-    local label="$3"
-    local target_dir="$4"
-
-    if [ "$target_dir" = "$primary_dir" ]; then
-        echo "  ✅ $label skills 目录与通用目录相同，跳过重复镜像"
-        return 0
-    fi
-
-    echo "  镜像到 $label 全局目录: $target_dir"
-    install_agent_skills_to_dir "$source_dir" "$target_dir" "$label"
-}
-
-install_detected_agent_skill_mirrors() {
-    local source_dir="$1"
-    local primary_dir="$2"
-    local codex_setting="${SKILL_HUB_INSTALL_CODEX_SKILLS:-auto}"
-    local opencode_setting="${SKILL_HUB_INSTALL_OPENCODE_SKILLS:-auto}"
-    local claude_setting="${SKILL_HUB_INSTALL_CLAUDE_SKILLS:-auto}"
-    local codex_home="${CODEX_HOME:-$HOME/.codex}"
-    local codex_dir="${CODEX_SKILLS_DIR:-$codex_home/skills}"
-    local opencode_home="${OPENCODE_HOME:-$HOME/.config/opencode}"
-    local opencode_dir="${OPENCODE_SKILLS_DIR:-$opencode_home/skills}"
-    local claude_dir="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
-
-    if is_agent_mirror_disabled "$codex_setting"; then
-        echo "  ⏭️  已跳过 Codex skills 镜像（SKILL_HUB_INSTALL_CODEX_SKILLS=$codex_setting）"
-    elif [ "$codex_setting" != "auto" ] || command -v codex >/dev/null 2>&1 || [ -d "$codex_home" ]; then
-        install_agent_skill_mirror "$source_dir" "$primary_dir" "codex" "$codex_dir"
-    else
-        echo "  ⏭️  未检测到 Codex，跳过 Codex skills 镜像"
-    fi
-
-    if is_agent_mirror_disabled "$opencode_setting"; then
-        echo "  ⏭️  已跳过 OpenCode skills 镜像（SKILL_HUB_INSTALL_OPENCODE_SKILLS=$opencode_setting）"
-    elif [ "$opencode_setting" != "auto" ] || command -v opencode >/dev/null 2>&1 || [ -d "$opencode_home" ]; then
-        install_agent_skill_mirror "$source_dir" "$primary_dir" "opencode" "$opencode_dir"
-    else
-        echo "  ⏭️  未检测到 OpenCode，跳过 OpenCode skills 镜像"
-    fi
-
-    if is_agent_mirror_disabled "$claude_setting"; then
-        echo "  ⏭️  已跳过 Claude skills 镜像（SKILL_HUB_INSTALL_CLAUDE_SKILLS=$claude_setting）"
-    elif [ "$claude_setting" != "auto" ] || [ -d "$claude_dir" ]; then
-        install_agent_skill_mirror "$source_dir" "$primary_dir" "claude" "$claude_dir"
-    else
-        echo "  ⏭️  未检测到 Claude skills 目录，跳过 Claude skills 镜像"
-    fi
 }
 
 install_agent_skills_to_dir() {

@@ -618,68 +618,23 @@ func installBundledAgentSkills(sourceDir string) (int, []string) {
 	if info, err := os.Stat(sourceDir); err != nil || !info.IsDir() {
 		return 0, []string{"Release 包中未包含 agent-skills，已跳过 agent skill 同步"}
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return 0, []string{"无法确定 HOME，已跳过 agent skill 同步"}
-	}
-	targets := agentSkillTargets(home)
-	installed := 0
-	var warnings []string
-	for _, target := range targets {
-		count, err := copySkillHubSkills(sourceDir, target)
-		if err != nil {
-			warnings = append(warnings, err.Error())
-			continue
-		}
-		installed += count
-	}
-	return installed, warnings
-}
-
-func agentSkillTargets(home string) []string {
 	xdgData := os.Getenv("XDG_DATA_HOME")
 	if xdgData == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return 0, []string{"无法确定 HOME，已跳过内置 workflow skill 同步"}
+		}
 		xdgData = filepath.Join(home, ".local", "share")
 	}
-	primary := envOr("SKILL_HUB_AGENT_SKILLS_DIR", filepath.Join(xdgData, "skill-hub", "agent-skills"))
-	targets := []string{primary}
-
-	codexHome := envOr("CODEX_HOME", filepath.Join(home, ".codex"))
-	codexDir := envOr("CODEX_SKILLS_DIR", filepath.Join(codexHome, "skills"))
-	if shouldMirrorAgent("SKILL_HUB_INSTALL_CODEX_SKILLS", codexHome, "codex") {
-		targets = append(targets, codexDir)
+	targetDir := os.Getenv("SKILL_HUB_AGENT_SKILLS_DIR")
+	if targetDir == "" {
+		targetDir = filepath.Join(xdgData, "skill-hub", "agent-skills")
 	}
-
-	opencodeHome := envOr("OPENCODE_HOME", filepath.Join(home, ".config", "opencode"))
-	opencodeDir := envOr("OPENCODE_SKILLS_DIR", filepath.Join(opencodeHome, "skills"))
-	if shouldMirrorAgent("SKILL_HUB_INSTALL_OPENCODE_SKILLS", opencodeHome, "opencode") {
-		targets = append(targets, opencodeDir)
+	count, err := copySkillHubSkills(sourceDir, targetDir)
+	if err != nil {
+		return 0, []string{err.Error()}
 	}
-
-	claudeDir := envOr("CLAUDE_SKILLS_DIR", filepath.Join(home, ".claude", "skills"))
-	if shouldMirrorAgent("SKILL_HUB_INSTALL_CLAUDE_SKILLS", claudeDir, "") {
-		targets = append(targets, claudeDir)
-	}
-	return uniqueStrings(targets)
-}
-
-func shouldMirrorAgent(settingEnv, markerPath, commandName string) bool {
-	setting := os.Getenv(settingEnv)
-	if isDisabled(setting) {
-		return false
-	}
-	if setting != "" && setting != "auto" {
-		return true
-	}
-	if commandName != "" {
-		if _, err := exec.LookPath(commandName); err == nil {
-			return true
-		}
-	}
-	if info, err := os.Stat(markerPath); err == nil && info.IsDir() {
-		return true
-	}
-	return false
+	return count, nil
 }
 
 func isDisabled(value string) bool {
@@ -689,26 +644,6 @@ func isDisabled(value string) bool {
 	default:
 		return false
 	}
-}
-
-func envOr(name, fallback string) string {
-	if value := os.Getenv(name); value != "" {
-		return value
-	}
-	return fallback
-}
-
-func uniqueStrings(values []string) []string {
-	seen := map[string]bool{}
-	var result []string
-	for _, value := range values {
-		if value == "" || seen[value] {
-			continue
-		}
-		seen[value] = true
-		result = append(result, value)
-	}
-	return result
 }
 
 func copySkillHubSkills(sourceDir, targetDir string) (int, error) {

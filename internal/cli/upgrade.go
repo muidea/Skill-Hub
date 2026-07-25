@@ -41,7 +41,7 @@ func init() {
 	upgradeCmd.Flags().Bool("dry-run", false, "演习模式，显示将要下载和替换的资产，不修改文件")
 	upgradeCmd.Flags().Bool("force", false, "允许重新安装当前版本或安装低于当前版本的指定版本")
 	upgradeCmd.Flags().Bool("json", false, "以JSON格式输出升级检测或执行结果")
-	upgradeCmd.Flags().Bool("skip-agent-skills", false, "升级二进制后跳过内置 agent skills 同步")
+	upgradeCmd.Flags().Bool("skip-agent-skills", false, "升级二进制后跳过内置 workflow skills 同步")
 	upgradeCmd.Flags().Bool("no-restart-serve", false, "升级后不自动重启已注册且正在运行的 serve 实例")
 }
 
@@ -134,7 +134,7 @@ func renderUpgradeResult(result *upgradeservice.Result) {
 	case "upgraded":
 		fmt.Println("skill-hub 升级完成")
 		if result.AgentSkillsInstalled > 0 {
-			fmt.Printf("已同步 agent skills: %d\n", result.AgentSkillsInstalled)
+			fmt.Printf("已同步内置 workflow skills: %d\n", result.AgentSkillsInstalled)
 		}
 		if len(result.ServeRestarted) > 0 {
 			fmt.Printf("已重启 serve 实例: %s\n", strings.Join(result.ServeRestarted, ", "))
