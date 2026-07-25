@@ -65,6 +65,34 @@ func TestGlobal_EnableApplyAndInspect(t *testing.T) {
 	}
 }
 
+func TestGlobal_EnableSkillPreservesVariablesWhenNotExplicitlyProvided(t *testing.T) {
+	config.ResetForTest()
+	defer config.ResetForTest()
+
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("PATH", homeDir)
+	t.Setenv("SKILL_HUB_HOME", homeDir)
+	t.Setenv("CODEX_SKILLS_DIR", filepath.Join(homeDir, "codex", "skills"))
+	writeTestConfig(t, homeDir)
+	writeRepoSkill(t, homeDir, "main", "demo-skill", "---\nname: Demo Skill\nversion: 1.0.0\n---\nHello\n")
+
+	svc := New()
+	if _, err := svc.EnableSkill("demo-skill", "main", []string{"codex"}, map[string]string{"region": "cn"}); err != nil {
+		t.Fatalf("initial EnableSkill: %v", err)
+	}
+	if _, err := svc.EnableSkill("demo-skill", "main", []string{"codex"}, nil); err != nil {
+		t.Fatalf("re-enable without variables: %v", err)
+	}
+	state, err := loadState()
+	if err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
+	if got := state.EnabledSkills["demo-skill"].Variables["region"]; got != "cn" {
+		t.Fatalf("variables were cleared: %#v", state.EnabledSkills["demo-skill"].Variables)
+	}
+}
+
 func TestGlobal_InspectModifiedAndConflict(t *testing.T) {
 	config.ResetForTest()
 	defer config.ResetForTest()
@@ -114,6 +142,42 @@ func TestGlobal_InspectModifiedAndConflict(t *testing.T) {
 	}
 	if got := statusConflict.Items[0].Status; got != StatusConflict {
 		t.Fatalf("status conflict = %q, want %q", got, StatusConflict)
+	}
+}
+
+func TestGlobal_ApplyRefreshesStoredVersion(t *testing.T) {
+	config.ResetForTest()
+	defer config.ResetForTest()
+
+	homeDir := t.TempDir()
+	codexSkillsDir := filepath.Join(homeDir, "codex", "skills")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("PATH", homeDir)
+	t.Setenv("SKILL_HUB_HOME", homeDir)
+	t.Setenv("CODEX_SKILLS_DIR", codexSkillsDir)
+
+	writeTestConfig(t, homeDir)
+	writeRepoSkill(t, homeDir, "main", "demo-skill", "---\nname: Demo Skill\nversion: 1.0.0\n---\nHello\n")
+
+	svc := New()
+	if _, err := svc.EnableSkill("demo-skill", "main", []string{"codex"}, nil); err != nil {
+		t.Fatalf("EnableSkill returned error: %v", err)
+	}
+	if _, err := svc.Apply("demo-skill", nil, false, false); err != nil {
+		t.Fatalf("initial Apply returned error: %v", err)
+	}
+
+	writeRepoSkill(t, homeDir, "main", "demo-skill", "---\nname: Demo Skill\nversion: 1.1.0\n---\nUpdated\n")
+	if _, err := svc.Apply("demo-skill", nil, false, false); err != nil {
+		t.Fatalf("updated Apply returned error: %v", err)
+	}
+
+	status, err := svc.Inspect("demo-skill", []string{"codex"})
+	if err != nil {
+		t.Fatalf("Inspect returned error: %v", err)
+	}
+	if len(status.Items) != 1 || status.Items[0].Version != "1.1.0" {
+		t.Fatalf("status version = %+v, want 1.1.0", status.Items)
 	}
 }
 

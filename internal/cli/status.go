@@ -35,13 +35,12 @@ pattern 的已启用技能。请引用带通配符的 pattern，避免 shell 在
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		jsonOutput, _ := cmd.Flags().GetBool("json")
 		global, _ := cmd.Flags().GetBool("global")
-		agents, _ := cmd.Flags().GetStringArray("agent")
 		patterns, err := readPatternFlag(cmd)
 		if err != nil {
 			return err
 		}
 		if global {
-			return runStatusGlobalDispatch(patterns, agents, jsonOutput)
+			return runStatusGlobalDispatch(patterns, nil, jsonOutput)
 		}
 		if len(patterns) == 0 {
 			return runStatus("", verbose, jsonOutput)
@@ -54,7 +53,6 @@ func init() {
 	statusCmd.Flags().Bool("verbose", false, "显示详细差异信息")
 	statusCmd.Flags().Bool("json", false, "以JSON格式输出状态，便于CI和自动化脚本处理")
 	statusCmd.Flags().Bool("global", false, "检查本机全局技能状态")
-	statusCmd.Flags().StringArray("agent", nil, "限制检查的 agent，可重复使用: codex, opencode, claude")
 	statusCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。请引用通配符避免 shell 展开。")
 }
 
@@ -410,7 +408,7 @@ func renderGlobalStatusSummary(summary *globalservice.StatusSummary) {
 
 	if len(summary.Items) == 0 {
 		fmt.Println("\nℹ️  当前未启用任何全局技能")
-		fmt.Println("使用 'skill-hub use <skill-id> --global --agent <agent>' 启用全局技能")
+		fmt.Println("使用 'skill-hub use <skill-id> --global' 启用全局技能")
 		return
 	}
 

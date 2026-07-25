@@ -730,6 +730,13 @@ func (m *Manager) ArchiveToDefaultRepository(skillID, sourcePath string) error {
 	}
 
 	targetDir := filepath.Join(repoDir, "skills", skillID)
+	if _, err := os.Stat(filepath.Join(targetDir, "SKILL.md")); err == nil {
+		if err := skill.EnsureCoreInformationPreserved(targetDir, sourcePath); err != nil {
+			return errors.NewWithCodef("ArchiveToDefaultRepository", errors.ErrValidation, "拒绝归档技能 %s: %v", skillID, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return errors.WrapWithCode(err, "ArchiveToDefaultRepository", errors.ErrFileOperation, "检查已有技能文件失败")
+	}
 
 	// 创建目标目录
 	if err := os.MkdirAll(filepath.Dir(targetDir), 0755); err != nil {

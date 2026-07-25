@@ -16,6 +16,7 @@ import (
 	"github.com/muidea/skill-hub/internal/config"
 	repositorymodule "github.com/muidea/skill-hub/internal/modules/kernel/repository"
 	"github.com/muidea/skill-hub/pkg/errors"
+	"github.com/muidea/skill-hub/pkg/spec"
 )
 
 const (
@@ -78,12 +79,7 @@ type Manifest struct {
 	AppliedAt        string `json:"applied_at"`
 }
 
-type UseResult struct {
-	SkillID    string   `json:"skill_id"`
-	Version    string   `json:"version"`
-	Repository string   `json:"repository"`
-	Agents     []string `json:"agents"`
-}
+type UseResult = spec.UseResult
 
 type StatusSummary struct {
 	Scope       string       `json:"scope"`
@@ -174,6 +170,11 @@ func (g *Global) EnableSkill(skillID, repoName string, agents []string, variable
 	now := time.Now().Format(time.RFC3339)
 	existing := state.EnabledSkills[skillID]
 	mergedAgents := mergeStrings(existing.Agents, resolvedAgents)
+	if variables == nil {
+		// Re-enabling an existing skill without an explicit variable payload is
+		// a source/agent update, not a request to erase its configuration.
+		variables = existing.Variables
+	}
 	state.EnabledSkills[skillID] = SkillState{
 		SkillID:          skillID,
 		Version:          fullSkill.Version,
@@ -190,10 +191,12 @@ func (g *Global) EnableSkill(skillID, repoName string, agents []string, variable
 	}
 
 	return &UseResult{
+		Scope:      "global",
 		SkillID:    skillID,
 		Version:    fullSkill.Version,
 		Repository: selectedRepo,
 		Agents:     mergedAgents,
+		Status:     "enabled",
 	}, nil
 }
 
@@ -327,6 +330,15 @@ func (g *Global) Apply(skillID string, agentFilters []string, dryRun, force bool
 		if srcErr == nil {
 			sourceHash, srcErr = hashDirectory(srcDir)
 		}
+		var sourceVersion string
+		if srcErr == nil {
+			loadedSkill, loadErr := g.repositorySvc.Service().LoadSkill(id, skillState.SourceRepository)
+			if loadErr != nil {
+				srcErr = loadErr
+			} else {
+				sourceVersion = loadedSkill.Version
+			}
+		}
 		if srcErr != nil {
 			for _, agentName := range targetAgents {
 				result.Items = append(result.Items, StatusItem{
@@ -369,6 +381,7 @@ func (g *Global) Apply(skillID string, agentFilters []string, dryRun, force bool
 
 		if !dryRun {
 			skillState.ContentHash = sourceHash
+			skillState.Version = sourceVersion
 			skillState.AppliedAt = now
 			skillState.Agents = targetAgents
 			state.EnabledSkills[id] = skillState
@@ -680,7 +693,7 @@ func (g *Global) resolveAgents(agentNames []string, requireDetected bool) ([]Age
 
 	agents := DetectAgents()
 	if requireDetected && len(agents) == 0 {
-		return nil, errors.NewWithCode("resolveAgents", errors.ErrInvalidInput, "未检测到可用 agent，请使用 --agent 指定")
+		return nil, errors.NewWithCode("resolveAgents", errors.ErrInvalidInput, "未检测到可用 agent；请先安装或配置 Codex、OpenCode 或 Claude 的 skills 目录")
 	}
 	return agents, nil
 }

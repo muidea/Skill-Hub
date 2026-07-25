@@ -5,7 +5,7 @@ compatibility: "Designed for Claude Code, Cursor, OpenCode, and other AI coding 
 metadata:
   author: skill-hub Team
   tags: skill-hub,skills,workflow,router
-  version: 1.1.7
+  version: 1.1.9
 ---
 
 # Skill Hub Workflow Router
@@ -53,13 +53,25 @@ Use `skill-hub-project-usage` when the user wants to:
 - `status --global` checks global desired state, source repository content, agent directories, and Skill-Hub manifests.
 - `remove --global` removes global desired state and only deletes Skill-Hub managed agent skill directories unless `--force` is explicit.
 - `feedback` writes project-local skill changes to the local default skill repository.
+- `feedback` and `import --archive` reject updates that drop existing explicit versions, core frontmatter, top-level guidance sections, or managed resources. `--force` does not bypass this safeguard.
 - `import <skills-dir> --archive --archive-only --force` archives release-bundled or batch skill directories such as `agent-skills/*` without registering them in the current project state.
-- `repo rebuild-index [repo]` repairs repository indexes; it is not a skill archive entry point.
+- `repo rebuild-index [repo]` repairs repository indexes; it is not a skill archive entry point. Review its Git diff because it can touch metadata beyond the skill being repaired.
 - `push` is the explicit remote publication step. Never run it automatically.
 - `pull` and `repo sync` synchronize remote repositories into local repositories; they are not remote publication.
 - `upgrade` updates the skill-hub binary from GitHub Releases; it is not a skill repository sync and does not publish local skill changes.
 - In `serve` mode, `secretKey` is only required for remote push.
 - `target` and compatibility metadata are descriptive; do not branch business logic by target.
+
+## Integrity Repair Routing
+
+When a managed skill's repository content, `registry.json`, project copy, or global-agent manifest disagrees, route to `skill-hub-skill-authoring` with this order:
+
+1. Inspect the default repository's Git history and current `registry.json` entry.
+2. Restore missing explicit version or metadata in the repository copy from the last consistent revision.
+3. Refresh project copies with `apply`, and global managed copies with `apply --global --dry-run` followed by `apply --global`.
+4. Verify hashes with `status --global` and validate project links with `validate --links`.
+
+Do not resolve an authority conflict by feeding a stale project or global copy back through `feedback`.
 
 ## Minimal Command Map
 
@@ -86,7 +98,7 @@ skill-hub init
 skill-hub repo sync --json
 skill-hub list
 skill-hub search <keyword>
-skill-hub use --pattern <skill-id>
+skill-hub use <skill-id>
 skill-hub apply
 skill-hub apply --pattern <skill-id>
 skill-hub status
@@ -97,7 +109,7 @@ For enabling managed skills globally on this machine:
 ```bash
 skill-hub list
 skill-hub search <keyword>
-skill-hub use --pattern <skill-id> --global --agent codex
+skill-hub use <skill-id> --global
 skill-hub status --global
 skill-hub apply --global --dry-run
 skill-hub apply --global
@@ -106,7 +118,7 @@ skill-hub apply --global
 For removing machine-global skills:
 
 ```bash
-skill-hub remove <skill-id> --global --agent codex
+skill-hub remove <skill-id> --global
 ```
 
 For remote publication, only after explicit user approval:

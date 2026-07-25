@@ -51,31 +51,32 @@ Use this skill for global management coverage.
 
         use_result = self.cmd.run(
             "use",
-            ["--pattern", "global-demo", "--global", "--agent", "codex"],
+            ["global-demo", "--global"],
             cwd=str(self.project_dir),
         )
         assert use_result.success, f"use --global failed: {use_result.stderr}\n{use_result.stdout}"
-        assert "已成功标记为本机全局使用" in use_result.stdout
+        assert "已启用 global-demo" in use_result.stdout
 
         state = self._global_state()
         skill_state = state["enabled_skills"]["global-demo"]
         assert skill_state["source_repository"] == "main"
-        assert skill_state["agents"] == ["codex"]
+        assert skill_state["agents"] == ["claude", "codex", "opencode"]
         assert skill_state["content_hash"].startswith("sha256:")
 
         status_before = self.cmd.run(
             "status",
-            ["--pattern", "global-demo", "--global", "--agent", "codex", "--json"],
+            ["--pattern", "global-demo", "--global", "--json"],
             cwd=str(self.project_dir),
         )
         assert status_before.success, f"status --global before apply failed: {status_before.stderr}\n{status_before.stdout}"
         before_data = json.loads(status_before.stdout)
-        assert before_data["skill_count"] == 1
-        assert before_data["items"][0]["status"] == "missing_agent_dir"
+        assert before_data["skill_count"] >= 1
+        before_codex = next(item for item in before_data["items"] if item["agent"] == "codex")
+        assert before_codex["status"] == "missing_agent_dir"
 
         dry_run = self.cmd.run(
             "apply",
-            ["--pattern", "global-demo", "--global", "--agent", "codex", "--dry-run"],
+            ["--pattern", "global-demo", "--global", "--dry-run"],
             cwd=str(self.project_dir),
         )
         assert dry_run.success, f"apply --global --dry-run failed: {dry_run.stderr}\n{dry_run.stdout}"
@@ -83,7 +84,7 @@ Use this skill for global management coverage.
 
         apply_result = self.cmd.run(
             "apply",
-            ["--pattern", "global-demo", "--global", "--agent", "codex"],
+            ["--pattern", "global-demo", "--global"],
             cwd=str(self.project_dir),
         )
         assert apply_result.success, f"apply --global failed: {apply_result.stderr}\n{apply_result.stdout}"
@@ -98,27 +99,17 @@ Use this skill for global management coverage.
 
         status_after = self.cmd.run(
             "status",
-            ["--pattern", "global-demo", "--global", "--agent", "codex", "--json"],
+            ["--pattern", "global-demo", "--global", "--json"],
             cwd=str(self.project_dir),
         )
         assert status_after.success, f"status --global after apply failed: {status_after.stderr}\n{status_after.stdout}"
         after_data = json.loads(status_after.stdout)
-        assert after_data["items"][0]["status"] == "ok"
-
-        mismatch = self.cmd.run(
-            "status",
-            ["--pattern", "global-demo", "--global", "--agent", "opencode", "--json"],
-            cwd=str(self.project_dir),
-        )
-        assert mismatch.success, f"status --global --agent opencode should succeed: {mismatch.stderr}\n{mismatch.stdout}"
-        mismatch_data = json.loads(mismatch.stdout)
-        # The skill is enabled for codex, not opencode, so the opencode
-        # status should report 0 items (the skill doesn't apply there).
-        assert mismatch_data["skill_count"] == 0
+        after_codex = next(item for item in after_data["items"] if item["agent"] == "codex")
+        assert after_codex["status"] == "ok"
 
         remove_result = self.cmd.run(
             "remove",
-            ["global-demo", "--global", "--agent", "codex"],
+            ["global-demo", "--global"],
             cwd=str(self.project_dir),
         )
         assert remove_result.success, f"remove --global failed: {remove_result.stderr}\n{remove_result.stdout}"

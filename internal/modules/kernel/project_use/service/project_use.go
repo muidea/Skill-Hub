@@ -6,14 +6,10 @@ import (
 	projectstatemodule "github.com/muidea/skill-hub/internal/modules/kernel/project_state"
 	repositorymodule "github.com/muidea/skill-hub/internal/modules/kernel/repository"
 	"github.com/muidea/skill-hub/pkg/errors"
+	"github.com/muidea/skill-hub/pkg/spec"
 )
 
-type UseResult struct {
-	ProjectPath string `json:"project_path"`
-	SkillID     string `json:"skill_id"`
-	Version     string `json:"version"`
-	Repository  string `json:"repository"`
-}
+type UseResult = spec.UseResult
 
 type ProjectUse struct {
 	projectStateSvc *projectstatemodule.ProjectState
@@ -80,9 +76,11 @@ func (p *ProjectUse) EnableSkill(projectPath, skillID, repoName string, variable
 	}
 
 	return &UseResult{
+		Scope:       "project",
 		ProjectPath: projectRoot,
 		SkillID:     skillID,
 		Version:     fullSkill.Version,
 		Repository:  selectedRepo,
+		Status:      "enabled",
 	}, nil
 }

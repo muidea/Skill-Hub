@@ -20,10 +20,10 @@ b54329d test: remove unused global test helper
 
 ## User-Facing Scope
 
-- Adds `skill-hub use <id> --global [--agent codex|opencode|claude]`.
-- Adds `skill-hub status [id] --global [--agent codex|opencode|claude] [--json]`.
-- Adds `skill-hub apply [id] --global [--agent codex|opencode|claude] [--dry-run] [--force]`.
-- Adds `skill-hub remove <id> --global [--agent codex|opencode|claude] [--force]`.
+- Adds the initial machine-global `use` command (the former per-agent selector was removed in later versions).
+- Adds global status inspection with JSON output.
+- Adds global apply with preview and conflict controls.
+- Adds global removal with conflict controls.
 - Stores desired global state in `~/.skill-hub/global-state.json`.
 - Maintains a Skill-Hub global mirror under `~/.skill-hub/global/skills/<id>`.
 - Applies managed skills to Codex, OpenCode, and Claude global skills directories.

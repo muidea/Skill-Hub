@@ -59,7 +59,7 @@ skill-hub search git
 启用并应用 skill：
 
 ```bash
-skill-hub use --pattern git-expert
+skill-hub use git-expert
 skill-hub apply
 skill-hub status
 ```
@@ -88,7 +88,7 @@ skill-hub push --dry-run --json
 如果希望某个 skill 对本机 agent 全局可用，可以使用 `--global`：
 
 ```bash
-skill-hub use --pattern git-expert --global --agent codex
+skill-hub use git-expert --global
 skill-hub status --global
 skill-hub apply --global --dry-run
 skill-hub apply --global

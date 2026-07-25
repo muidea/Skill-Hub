@@ -329,7 +329,7 @@ func TestRunUseViaServiceWithoutLocalConfig(t *testing.T) {
 			}
 		})
 	})
-	if !strings.Contains(output, "已成功标记为使用") {
+	if !strings.Contains(output, "已启用 demo-skill") {
 		t.Fatalf("unexpected use output: %q", output)
 	}
 }

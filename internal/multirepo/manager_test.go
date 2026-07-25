@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/muidea/skill-hub/internal/config"
@@ -327,6 +328,74 @@ compatibility: open_code
 
 	if len(registry.Skills) != 1 || registry.Skills[0].ID != "archived-skill" {
 		t.Fatalf("unexpected registry contents: %#v", registry.Skills)
+	}
+}
+
+func TestManager_ArchiveToDefaultRepositoryRejectsCoreInformationLoss(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("SKILL_HUB_HOME", tmpDir)
+
+	cfg := &config.Config{MultiRepo: &config.MultiRepoConfig{
+		Enabled: true, DefaultRepo: "main",
+		Repositories: map[string]config.RepositoryConfig{"main": {Name: "main", Enabled: true, IsArchive: true}},
+	}}
+	targetDir := filepath.Join(tmpDir, "repositories", "main", "skills", "protected-skill")
+	sourceDir := filepath.Join(tmpDir, "source-skill")
+	for _, dir := range []string{targetDir, sourceDir} {
+		if err := os.MkdirAll(filepath.Join(dir, "references"), 0755); err != nil {
+			t.Fatalf("mkdir skill directory: %v", err)
+		}
+	}
+	existing := "---\nname: Protected Skill\ndescription: complete guidance\nversion: 2.0.0\nmetadata:\n  author: skill-hub\n---\n# Protected Skill\n\n## Workflow\nfull workflow\n\n## Safety Checklist\nkeep this\n"
+	candidate := "---\nname: Protected Skill\ndescription: reduced guidance\nversion: 2.1.0\n---\n# Protected Skill\n\n## Workflow\nshort workflow\n"
+	if err := os.WriteFile(filepath.Join(targetDir, "SKILL.md"), []byte(existing), 0644); err != nil {
+		t.Fatalf("write target skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "references", "safety.md"), []byte("safety"), 0644); err != nil {
+		t.Fatalf("write target reference: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "SKILL.md"), []byte(candidate), 0644); err != nil {
+		t.Fatalf("write source skill: %v", err)
+	}
+
+	err := (&Manager{config: cfg}).ArchiveToDefaultRepository("protected-skill", sourceDir)
+	if err == nil || !strings.Contains(err.Error(), "核心信息") {
+		t.Fatalf("expected core information protection error, got %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(targetDir, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read protected skill: %v", err)
+	}
+	if string(got) != existing {
+		t.Fatalf("protected skill was overwritten: %q", got)
+	}
+}
+
+func TestManager_ArchiveToDefaultRepositoryRejectsMissingVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("SKILL_HUB_HOME", tmpDir)
+	cfg := &config.Config{MultiRepo: &config.MultiRepoConfig{
+		Enabled: true, DefaultRepo: "main",
+		Repositories: map[string]config.RepositoryConfig{"main": {Name: "main", Enabled: true, IsArchive: true}},
+	}}
+	targetDir := filepath.Join(tmpDir, "repositories", "main", "skills", "versioned-skill")
+	sourceDir := filepath.Join(tmpDir, "source-skill")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatalf("mkdir target skill: %v", err)
+	}
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("mkdir source skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "SKILL.md"), []byte("---\nname: Versioned Skill\ndescription: complete guidance\nversion: 2.5.1\n---\n# Skill\n"), 0644); err != nil {
+		t.Fatalf("write target skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "SKILL.md"), []byte("---\nname: Versioned Skill\ndescription: changed guidance\n---\n# Skill\n"), 0644); err != nil {
+		t.Fatalf("write source skill: %v", err)
+	}
+
+	err := (&Manager{config: cfg}).ArchiveToDefaultRepository("versioned-skill", sourceDir)
+	if err == nil || !strings.Contains(err.Error(), "frontmatter.version") {
+		t.Fatalf("expected missing version protection error, got %v", err)
 	}
 }
 

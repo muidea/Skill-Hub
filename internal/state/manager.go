@@ -192,6 +192,11 @@ func (m *StateManager) AddSkillToProjectWithSource(projectPath, skillID, version
 	if err != nil {
 		return err
 	}
+	if variables == nil {
+		if existing, ok := state.Skills[skillID]; ok {
+			variables = existing.Variables
+		}
+	}
 
 	state.Skills[skillID] = spec.SkillVars{
 		SkillID:          skillID,

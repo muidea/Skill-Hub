@@ -28,13 +28,12 @@ var applyCmd = &cobra.Command{
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		force, _ := cmd.Flags().GetBool("force")
 		global, _ := cmd.Flags().GetBool("global")
-		agents, _ := cmd.Flags().GetStringArray("agent")
 		patterns, err := readPatternFlag(cmd)
 		if err != nil {
 			return err
 		}
 		if global {
-			return runApplyGlobalByPatterns(patterns, agents, dryRun, force)
+			return runApplyGlobalByPatterns(patterns, nil, dryRun, force)
 		}
 		return runApplyByPatterns(patterns, dryRun, force)
 	},
@@ -44,9 +43,7 @@ func init() {
 	applyCmd.Flags().Bool("dry-run", false, "演习模式，仅显示将要执行的变更，不实际修改文件")
 	applyCmd.Flags().Bool("force", false, "强制应用，即使检测到冲突也继续执行")
 	applyCmd.Flags().Bool("global", false, "应用本机全局启用的技能")
-	applyCmd.Flags().StringArray("agent", nil, "限制全局应用的 agent，可重复使用: codex, opencode, claude")
 	applyCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。请引用通配符避免 shell 展开。")
-	_ = applyCmd.RegisterFlagCompletionFunc("agent", completeAgentNames)
 }
 
 func runApplyGlobal(skillID string, agents []string, dryRun bool, force bool) error {
@@ -247,7 +244,7 @@ func renderGlobalApplyResult(result *globalservice.ApplyResult) {
 	}
 	if len(result.Items) == 0 {
 		fmt.Println("ℹ️  当前未启用任何全局技能")
-		fmt.Println("使用 'skill-hub use <skill-id> --global --agent <agent>' 启用全局技能")
+		fmt.Println("使用 'skill-hub use <skill-id> --global' 启用全局技能")
 		return
 	}
 	for _, item := range result.Items {

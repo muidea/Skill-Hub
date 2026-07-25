@@ -37,13 +37,15 @@ func TestListRejectsPositionalPattern(t *testing.T) {
 	}
 }
 
-func TestUseRejectsPositionalPattern(t *testing.T) {
+func TestUseAcceptsPositionalExactID(t *testing.T) {
 	err := useCmd.Args(useCmd, []string{"demo-skill"})
-	if err == nil {
-		t.Fatalf("expected error for positional arg, got nil")
+	if err != nil {
+		t.Fatalf("expected positional exact ID to be accepted, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "--pattern") {
-		t.Errorf("error should mention --pattern: %v", err)
+
+	err = useCmd.Args(useCmd, []string{"demo*"})
+	if err == nil || !strings.Contains(err.Error(), "--pattern") {
+		t.Errorf("expected positional glob to be rejected with --pattern hint: %v", err)
 	}
 }
 
@@ -87,10 +89,9 @@ func TestValidateRejectsPositionalPattern(t *testing.T) {
 	}
 }
 
-// TestUseRequiresPatternFlag verifies the RunE error path for `use` when no
-// --pattern is supplied. We stub the service bridge so the failure happens
-// at the dispatch layer (before any backend call).
-func TestUseRequiresPatternFlag(t *testing.T) {
+// TestUseRequiresSkillInput verifies the RunE error path for `use` when no
+// positional ID or --pattern is supplied.
+func TestUseRequiresSkillInput(t *testing.T) {
 	reset := stubServiceBridge(t, &fakeServiceBridgeClient{})
 	defer reset()
 
@@ -107,8 +108,8 @@ func TestUseRequiresPatternFlag(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for missing --pattern, got nil")
 	}
-	if !strings.Contains(err.Error(), "--pattern") {
-		t.Errorf("error should mention --pattern: %v", err)
+	if !strings.Contains(err.Error(), "技能 ID") {
+		t.Errorf("error should mention skill ID: %v", err)
 	}
 }
 

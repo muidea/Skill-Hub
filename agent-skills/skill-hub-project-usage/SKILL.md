@@ -5,7 +5,7 @@ compatibility: "Designed for Claude Code, Cursor, OpenCode, and other AI coding 
 metadata:
   author: skill-hub Team
   tags: skill-hub,project-usage,skills,apply,use
-  version: 1.0.6
+  version: 1.0.7
 ---
 
 # Skill Hub Project Usage
@@ -62,7 +62,7 @@ skill-hub search <keyword>
 Enable and apply only after selecting a suitable skill from `list` or `search` output:
 
 ```bash
-skill-hub use --pattern <skill-id>
+skill-hub use <skill-id>
 skill-hub apply
 skill-hub status
 ```
@@ -94,14 +94,14 @@ skill-hub search <keyword>
 Enable globally only after selecting a suitable managed skill:
 
 ```bash
-skill-hub use --pattern <skill-id> --global --agent codex
+skill-hub use <skill-id> --global
 ```
 
 Inspect and preview before writing agent global directories:
 
 ```bash
 skill-hub status --global
-skill-hub status --pattern <skill-id> --global --agent codex
+skill-hub status --pattern <skill-id> --global
 skill-hub apply --global --dry-run
 ```
 
@@ -114,10 +114,10 @@ skill-hub apply --global
 Remove global usage when requested:
 
 ```bash
-skill-hub remove <skill-id> --global --agent codex
+skill-hub remove <skill-id> --global
 ```
 
-Use `--agent codex`, `--agent opencode`, or `--agent claude` to scope global operations. If no agent is specified, skill-hub uses detected or configured agents. If `status --pattern <skill-id> --global` or `apply --pattern <skill-id> --global` reports `SKILL_NOT_FOUND`, the skill is not globally enabled for the requested agent; do not treat an empty result as success.
+Global commands always use all detected or configured agents; they do not offer per-agent filtering. If `status --pattern <skill-id> --global` or `apply --pattern <skill-id> --global` reports `SKILL_NOT_FOUND`, the skill is not globally enabled; do not treat an empty result as success.
 
 Do not use `--force` unless the user explicitly accepts overwriting a same-name global skill directory that is not managed by Skill-Hub. `--force` creates a backup before replacing conflicts.
 
@@ -132,7 +132,7 @@ skill-hub search <keyword>
 
 Use `list` to see the available managed skill inventory. Use `search` with project, domain, language, framework, tool, or workflow keywords to narrow candidates.
 
-Only run `skill-hub use --pattern <skill-id>` or `skill-hub use --pattern <skill-id> --global` when a listed or searched skill clearly matches the current task. If no suitable skill exists, tell the user that no managed skill matched and continue without `use`; do not guess an unrelated skill ID.
+Only run `skill-hub use <skill-id>` or `skill-hub use <skill-id> --global` when a listed or searched skill clearly matches the current task. Use `--repo <name>` to lock the source in automation, and `--dry-run --json --non-interactive` to preview a non-interactive invocation. If no suitable skill exists, tell the user that no managed skill matched and continue without `use`; do not guess an unrelated skill ID.
 
 When multiple repositories contain the same skill ID, choose based on project intent and repository source. Ask the user when the right repository is ambiguous.
 

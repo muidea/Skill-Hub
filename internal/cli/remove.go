@@ -16,7 +16,7 @@ import (
 )
 
 var removeCmd = &cobra.Command{
-	Use:   "remove <id> | --pattern ... [--global] [--agent ...]",
+	Use:   "remove <id> | --pattern ... [--global]",
 	Short: "移除项目技能",
 	Long: `从当前项目中移除指定的技能，或通过 --pattern 批量移除匹配的已启用技能：
 1. 从 state.json 中移除技能标记
@@ -35,7 +35,6 @@ var removeCmd = &cobra.Command{
 	ValidArgsFunction: completeEnabledSkillIDsForCwd,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		global, _ := cmd.Flags().GetBool("global")
-		agents, _ := cmd.Flags().GetStringArray("agent")
 		force, _ := cmd.Flags().GetBool("force")
 		patterns, err := readPatternFlag(cmd)
 		if err != nil {
@@ -46,7 +45,7 @@ var removeCmd = &cobra.Command{
 				return errors.NewWithCode("remove", errors.ErrInvalidInput, "--pattern cannot be combined with positional skill ID")
 			}
 			if global {
-				return runRemoveGlobalByPatterns(patterns, agents, force)
+				return runRemoveGlobalByPatterns(patterns, nil, force)
 			}
 			return runRemoveByPatterns(patterns)
 		}
@@ -54,7 +53,7 @@ var removeCmd = &cobra.Command{
 			return errors.NewWithCode("remove", errors.ErrInvalidInput, "missing skill ID; use remove <id> or remove --pattern '<id-or-glob>'")
 		}
 		if global {
-			return runRemoveGlobal(args[0], agents, force)
+			return runRemoveGlobal(args[0], nil, force)
 		}
 		return runRemove(args[0])
 	},
@@ -62,7 +61,6 @@ var removeCmd = &cobra.Command{
 
 func init() {
 	removeCmd.Flags().Bool("global", false, "从本机全局状态和 agent 全局目录移除技能")
-	removeCmd.Flags().StringArray("agent", nil, "限制移除的 agent，可重复使用: codex, opencode, claude")
 	removeCmd.Flags().Bool("force", false, "强制移除全局冲突目录")
 	removeCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。请引用通配符避免 shell 展开。")
 }

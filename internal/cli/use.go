@@ -5,189 +5,431 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	httpapibiz "github.com/muidea/skill-hub/internal/modules/blocks/httpapi/biz"
 	globalservice "github.com/muidea/skill-hub/internal/modules/kernel/global/service"
 	"github.com/muidea/skill-hub/pkg/errors"
 	"github.com/muidea/skill-hub/pkg/spec"
+	pkgutils "github.com/muidea/skill-hub/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
 var useCmd = &cobra.Command{
-	Use:   "use --pattern ... [--global] [--agent ...]",
+	Use:   "use <id> | --pattern <id-or-glob>... [flags]",
 	Short: "使用技能",
-	Long: `将技能标记为在当前项目中使用。pattern 经由 --pattern 标志传入，
-匹配技能 ID 字段（类 glob，* 可跨 /）：
-  *        匹配零或多个任意字符
-  ?        匹配恰好一个任意字符
-  **       匹配全部
+	Long: `将技能标记为在当前项目或本机全局范围内使用。
 
-此命令仅更新 state.json 中的状态记录，不直接修改项目文件，需要通过 apply 命令进行物理分发。
-
-如果项目工作区里首次使用技能，也会同步在 state.json 里完成项目工作区信息刷新。
-
-行为：
-  - pattern 命中 0 个技能：静默通过，不报错
-  - 命中 1 个：直接启用
-  - 命中多个不同 ID：逐个启用
-  - 同一 ID 命中多个仓库来源：交互式选择来源仓库
-
-注意：v0.8.13 起不再接受位置参数；'use <id>' 形式需改写为 'use --pattern <id>'。`,
-	Args: rejectPositionalPattern,
+直接传入 <id> 时按精确 ID 选择技能；--pattern 保留用于批量 glob 匹配。
+若同一 ID 来自多个仓库，可用 --repo 精确选择来源；自动化环境可配合
+--non-interactive 和 --json 使用。此命令只更新状态，不直接分发文件；请随后执行 apply。`,
+	Args: validateUseArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		global, _ := cmd.Flags().GetBool("global")
-		agents, _ := cmd.Flags().GetStringArray("agent")
 		patterns, err := readPatternFlag(cmd)
 		if err != nil {
 			return err
 		}
+		if len(args) == 1 {
+			patterns = []string{args[0]}
+		}
 		if len(patterns) == 0 {
-			return errors.NewWithCodef("use", errors.ErrInvalidInput, "missing --pattern value; use --pattern '<id-or-glob>'")
+			return errors.NewWithCode("use", errors.ErrInvalidInput, "缺少技能 ID；请使用 use <id> 或 --pattern '<id-or-glob>'")
 		}
-		if global {
-			return runUseByPatterns(patterns, agents, true)
+		global, _ := cmd.Flags().GetBool("global")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+		jsonOutput, _ := cmd.Flags().GetBool("json")
+		nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
+		repository, _ := cmd.Flags().GetString("repo")
+		variables, err := readUseVariables(cmd)
+		if err != nil {
+			return err
 		}
-		return runUseByPatterns(patterns, agents, false)
+
+		summary, runErr := runUseWithOptions(patterns, useOptions{
+			Global:         global,
+			Repository:     repository,
+			DryRun:         dryRun,
+			NonInteractive: nonInteractive || jsonOutput,
+			Variables:      variables,
+			ExactInput:     len(args) == 1,
+		})
+		if jsonOutput {
+			if err := writeJSON(summary); err != nil {
+				return err
+			}
+		} else {
+			renderUseSummary(summary)
+		}
+		return runErr
 	},
 }
 
 func init() {
-	useCmd.Flags().Bool("global", false, "将技能标记为本机全局使用")
-	useCmd.Flags().StringArray("agent", nil, "指定全局应用的 agent，可重复使用: codex, opencode, claude")
+	useCmd.Flags().Bool("global", false, "将技能标记为本机全局使用（默认处理全部检测/配置的 agent）")
 	useCmd.Flags().StringArray("pattern", nil, "技能 ID 通配符（可重复）。请引用通配符避免 shell 展开。")
-	_ = useCmd.RegisterFlagCompletionFunc("agent", completeAgentNames)
+	useCmd.Flags().String("repo", "", "精确指定技能来源仓库")
+	useCmd.Flags().Bool("dry-run", false, "仅解析并预览启用结果，不写入状态")
+	useCmd.Flags().Bool("json", false, "以统一 JSON 结果输出，适合自动化处理")
+	useCmd.Flags().Bool("non-interactive", false, "禁止交互；歧义来源会报错，变量使用默认值或 --var")
+	useCmd.Flags().StringArray("var", nil, "设置技能变量，格式 key=value，可重复使用")
 }
 
-// runUseByPatterns resolves each pattern against the cross-repo skill set
-// and applies the resolved skill(s). Per pattern: 0 hits is silent, 1 hit is
-// used directly, N distinct skill IDs are enabled one by one. Only duplicate
-// repository candidates for the same skill ID trigger chooseSkillCandidate.
-// A failure on one skill does not stop the remaining skills; the last error
-// is returned.
-//
-// When every pattern is a literal ID (no wildcards / **), preserve the
-// pre-v0.8.13 single-ID semantics: each ID is looked up via the direct
-// filesystem scan (FindSkill), which works even if the registry has not
-// been refreshed for a freshly-written skill. The registry-based
-// FindSkillsByPatterns is still tried first so a single round-trip suffices
-// in the common case; the direct scan is the fallback that lets the
-// `use <id>` exact-ID lookup keep working.
-func runUseByPatterns(patterns []string, agents []string, isGlobal bool) error {
+// validateUseArgs accepts one exact skill ID or one or more --pattern values,
+// but deliberately keeps glob patterns out of positional arguments.
+func validateUseArgs(cmd *cobra.Command, args []string) error {
+	patterns, err := readPatternFlag(cmd)
+	if err != nil {
+		return err
+	}
+	if len(args) == 0 && len(patterns) == 0 {
+		return errors.NewWithCode("use", errors.ErrInvalidInput, "缺少技能 ID；请使用 use <id> 或 --pattern '<id-or-glob>'")
+	}
+	if len(args) > 1 {
+		return errors.NewWithCode("use", errors.ErrInvalidInput, "use 只接受一个位置参数 ID；批量匹配请使用 --pattern")
+	}
+	if len(args) == 1 && len(patterns) > 0 {
+		return errors.NewWithCode("use", errors.ErrInvalidInput, "<id> 与 --pattern 不能同时使用")
+	}
+	if len(args) == 1 && strings.ContainsAny(args[0], "*?") {
+		return errors.NewWithCode("use", errors.ErrInvalidInput, "位置参数仅支持精确 ID；通配匹配请使用 --pattern '<glob>'")
+	}
+	return nil
+}
+
+type useOptions struct {
+	Global         bool
+	Repository     string
+	DryRun         bool
+	NonInteractive bool
+	Variables      map[string]string
+	ExactInput     bool
+}
+
+// UseSummary is the stable command result shared by project and global use.
+// JSON output intentionally contains no presentation-only fields.
+type UseSummary struct {
+	Scope   string    `json:"scope"`
+	DryRun  bool      `json:"dry_run"`
+	Total   int       `json:"total"`
+	Enabled int       `json:"enabled"`
+	Planned int       `json:"planned"`
+	Skipped int       `json:"skipped"`
+	Failed  int       `json:"failed"`
+	Items   []UseItem `json:"items"`
+}
+
+type UseItem struct {
+	Input          string `json:"input"`
+	SkillID        string `json:"skill_id,omitempty"`
+	Repository     string `json:"repository,omitempty"`
+	Version        string `json:"version,omitempty"`
+	Status         string `json:"status"`
+	NeedsVariables bool   `json:"needs_variables,omitempty"`
+	Error          string `json:"error,omitempty"`
+}
+
+func readUseVariables(cmd *cobra.Command) (map[string]string, error) {
+	raw, _ := cmd.Flags().GetStringArray("var")
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	variables := make(map[string]string, len(raw))
+	for _, value := range raw {
+		key, val, ok := strings.Cut(value, "=")
+		if !ok || strings.TrimSpace(key) == "" {
+			return nil, errors.NewWithCodef("use", errors.ErrInvalidInput, "无效的 --var %q；应使用 key=value", value)
+		}
+		key = strings.TrimSpace(key)
+		if _, exists := variables[key]; exists {
+			return nil, errors.NewWithCodef("use", errors.ErrInvalidInput, "变量 %q 被重复指定", key)
+		}
+		variables[key] = val
+	}
+	return variables, nil
+}
+
+// runUseByPatterns remains as a small compatibility seam for internal callers.
+// Agent selection is intentionally ignored: CLI global operations now always
+// target the configured/detected agent set.
+func runUseByPatterns(patterns []string, _ []string, isGlobal bool) error {
+	summary, err := runUseWithOptions(patterns, useOptions{Global: isGlobal})
+	renderUseSummary(summary)
+	return err
+}
+
+func runUseWithOptions(patterns []string, options useOptions) (*UseSummary, error) {
+	summary := &UseSummary{Scope: "project", DryRun: options.DryRun, Items: []UseItem{}}
+	if options.Global {
+		summary.Scope = "global"
+	}
 	matchers, err := compilePatterns(patterns)
 	if err != nil {
-		return err
+		return summary, err
 	}
 
-	allLiteral := len(matchers) > 0
-	for _, m := range matchers {
-		if !m.IsLiteral() {
-			allLiteral = false
-			break
-		}
-	}
-
-	allMatches, err := resolveSkillsByPatterns(patterns)
+	matches, err := resolveSkillsByPatternsFromRepos(patterns, options.Repository)
 	if err != nil {
-		return err
+		return summary, err
 	}
-	if allLiteral && len(allMatches) == 0 {
-		// Fall back to the direct filesystem scan so single-literal
-		// use keeps working even if the registry hasn't been refreshed.
-		for _, p := range patterns {
-			direct, directErr := resolveSingleLiteralSkill(p)
-			if directErr != nil {
-				return directErr
-			}
-			allMatches = append(allMatches, direct...)
+	// Each literal gets its own direct scan fallback. A partly stale registry
+	// must not make a later literal ID disappear merely because another pattern
+	// happened to resolve from the index.
+	for i, matcher := range matchers {
+		if !matcher.IsLiteral() || hasMatchingSkill(matches, matcher, options.Repository) {
+			continue
 		}
+		direct, directErr := resolveSingleLiteralSkill(patterns[i])
+		if directErr != nil {
+			return summary, directErr
+		}
+		matches = append(matches, filterSkillsByRepository(direct, options.Repository)...)
 	}
+	matches = uniqueSkillMetadata(matches)
 
+	selectedIDs := make(map[string]struct{})
 	var lastErr error
-	processed := 0
-	processedIDs := make(map[string]struct{})
-	for i, p := range patterns {
-		matcher := matchers[i]
-		var pMatches []spec.SkillMetadata
-		for _, s := range allMatches {
-			if _, ok := processedIDs[s.ID]; ok {
-				continue
+	for i, pattern := range patterns {
+		candidates := matchingSkills(matches, matchers[i], options.Repository)
+		item := UseItem{Input: pattern}
+		if len(candidates) == 0 {
+			if options.ExactInput {
+				item.Status = "error"
+				item.Error = errors.SkillNotFound("use", pattern).Error()
+				lastErr = errors.SkillNotFound("use", pattern)
+			} else {
+				item.Status = "skipped"
 			}
-			if matcher.Match(s.ID) {
-				pMatches = append(pMatches, s)
-			}
-		}
-
-		if len(pMatches) == 0 {
+			summary.Items = append(summary.Items, item)
 			continue
 		}
 
-		selectedSkills, err := selectUseCandidates(pMatches)
-		if err != nil {
-			lastErr = err
+		selectedSkills, selectErr := selectUseCandidates(candidates, options)
+		if selectErr != nil {
+			item.Status = "error"
+			item.Error = selectErr.Error()
+			summary.Items = append(summary.Items, item)
+			lastErr = selectErr
 			continue
 		}
 		for _, selected := range selectedSkills {
-			if _, ok := processedIDs[selected.ID]; ok {
+			item := UseItem{Input: pattern, SkillID: selected.ID, Repository: selected.Repository, Version: selected.Version}
+			if _, alreadySelected := selectedIDs[selected.ID]; alreadySelected {
+				item.Status = "skipped"
+				summary.Items = append(summary.Items, item)
 				continue
 			}
+			selectedIDs[selected.ID] = struct{}{}
 
-			if err := runUseOneSkill(selected, isGlobal, agents); err != nil {
-				fmt.Fprintf(os.Stderr, "❌ pattern '%s' 解析的技能 '%s' 启用失败: %v\n", p, selected.ID, err)
-				lastErr = err
-				continue
+			result, useErr := useSelectedSkill(selected, options)
+			item.Version = result.Version
+			item.NeedsVariables = result.NeedsVariables
+			if useErr == errUseCancelled {
+				item.Status = "skipped"
+			} else if useErr != nil {
+				item.Status = "error"
+				item.Error = useErr.Error()
+				lastErr = useErr
+			} else if options.DryRun {
+				item.Status = "planned"
+			} else {
+				item.Status = "enabled"
 			}
-			processedIDs[selected.ID] = struct{}{}
-			processed++
+			summary.Items = append(summary.Items, item)
 		}
 	}
 
-	if processed == 0 && lastErr == nil {
-		// 0 hits across all patterns: silent per design
-		return nil
+	for _, item := range summary.Items {
+		summary.Total++
+		switch item.Status {
+		case "enabled":
+			summary.Enabled++
+		case "planned":
+			summary.Planned++
+		case "skipped":
+			summary.Skipped++
+		case "error":
+			summary.Failed++
+		}
 	}
-	return lastErr
+	return summary, lastErr
 }
 
-func selectUseCandidates(matches []spec.SkillMetadata) ([]spec.SkillMetadata, error) {
-	if len(matches) <= 1 {
-		return matches, nil
-	}
+type selectedUseSkill struct {
+	Version        string
+	NeedsVariables bool
+}
 
-	byID := make(map[string][]spec.SkillMetadata, len(matches))
-	orderedIDs := make([]string, 0, len(matches))
-	for _, match := range matches {
-		if _, ok := byID[match.ID]; !ok {
-			orderedIDs = append(orderedIDs, match.ID)
+// errUseCancelled is a normal interactive outcome. It is rendered as a
+// skipped item so declining reconfiguration does not fail a batch command.
+var errUseCancelled = fmt.Errorf("操作已取消")
+
+func useSelectedSkill(selected spec.SkillMetadata, options useOptions) (selectedUseSkill, error) {
+	fullSkill, err := loadUseSkillDetail(selected)
+	if err != nil {
+		return selectedUseSkill{}, err
+	}
+	result := selectedUseSkill{Version: fullSkill.Version, NeedsVariables: len(fullSkill.Variables) > 0}
+	if options.DryRun {
+		return result, nil
+	}
+	variables, err := resolveUseVariables(fullSkill, options)
+	if err != nil {
+		return result, err
+	}
+	if options.Global {
+		return result, enableGlobalUse(selected, variables)
+	}
+	return result, enableProjectUse(selected, variables, options.NonInteractive)
+}
+
+func loadUseSkillDetail(selected spec.SkillMetadata) (*spec.Skill, error) {
+	if client, ok := hubClientIfAvailable(); ok {
+		fullSkill, err := client.GetSkillDetail(context.Background(), selected.ID, selected.Repository)
+		if err != nil {
+			return nil, errors.Wrap(err, "通过服务加载技能详情失败")
 		}
-		byID[match.ID] = append(byID[match.ID], match)
+		return fullSkill, nil
+	}
+	repoManager, err := newRepositoryManager()
+	if err != nil {
+		return nil, errors.Wrap(err, "创建多仓库管理器失败")
+	}
+	fullSkill, err := repoManager.LoadSkill(selected.ID, selected.Repository)
+	if err != nil {
+		return nil, errors.Wrap(err, "加载技能详情失败")
+	}
+	return fullSkill, nil
+}
+
+func resolveUseVariables(fullSkill *spec.Skill, options useOptions) (map[string]string, error) {
+	declared := make(map[string]spec.Variable, len(fullSkill.Variables))
+	for _, variable := range fullSkill.Variables {
+		declared[variable.Name] = variable
+	}
+	for key := range options.Variables {
+		if _, ok := declared[key]; !ok {
+			return nil, errors.NewWithCodef("use", errors.ErrInvalidInput, "技能 %s 未声明变量 %q", fullSkill.ID, key)
+		}
+	}
+	if len(fullSkill.Variables) == 0 {
+		return map[string]string{}, nil
+	}
+	values := make(map[string]string, len(fullSkill.Variables))
+	if options.NonInteractive {
+		for _, variable := range fullSkill.Variables {
+			if value, ok := options.Variables[variable.Name]; ok {
+				values[variable.Name] = value
+			} else {
+				values[variable.Name] = variable.Default
+			}
+		}
+		return values, nil
 	}
 
-	selectedSkills := make([]spec.SkillMetadata, 0, len(orderedIDs))
-	for _, id := range orderedIDs {
-		candidates := byID[id]
-		if len(candidates) == 1 {
-			selectedSkills = append(selectedSkills, candidates[0])
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("请设置技能变量 (按Enter使用默认值):")
+	for _, variable := range fullSkill.Variables {
+		if value, ok := options.Variables[variable.Name]; ok {
+			values[variable.Name] = value
 			continue
 		}
-		selected, err := chooseSkillCandidate(candidates)
-		if err != nil {
-			return nil, err
+		fmt.Printf("%s [%s]: ", variable.Name, variable.Default)
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		if input == "" {
+			values[variable.Name] = variable.Default
+		} else {
+			values[variable.Name] = input
 		}
-		selectedSkills = append(selectedSkills, selected)
 	}
-	return selectedSkills, nil
+	return values, nil
 }
 
-// resolveSingleLiteralSkill mirrors the v0.8.12 single-ID use path: scan
-// every enabled repo's filesystem directly so callers that wrote a
-// SKILL.md without refreshing the registry still see it.
-func resolveSingleLiteralSkill(skillID string) ([]spec.SkillMetadata, error) {
+func enableProjectUse(selected spec.SkillMetadata, variables map[string]string, nonInteractive bool) error {
 	if client, ok := hubClientIfAvailable(); ok {
-		// Service mode is registry-backed; we don't have a per-ID direct
-		// lookup path there. Fall through to the local scan.
-		_ = client
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		if !nonInteractive {
+			if status, statusErr := client.GetProjectStatus(context.Background(), cwd, selected.ID); statusErr == nil && status.Item != nil && len(status.Item.Items) > 0 && !confirmSkillReconfigure() {
+				return errUseCancelled
+			}
+		}
+		_, err = client.UseSkill(context.Background(), httpapibiz.UseSkillRequest{ProjectPath: cwd, SkillID: selected.ID, Repository: selected.Repository, Variables: variables})
+		if err != nil {
+			return errors.Wrap(err, "通过服务启用技能失败")
+		}
+		return nil
 	}
+	ctx, err := RequireInitAndWorkspace("")
+	if err != nil {
+		return err
+	}
+	if !nonInteractive {
+		hasSkill, hasErr := ctx.StateManager.ProjectHasSkill(ctx.Cwd, selected.ID)
+		if hasErr != nil {
+			return hasErr
+		}
+		if hasSkill && !confirmSkillReconfigure() {
+			return errUseCancelled
+		}
+	}
+	fullSkill, err := loadUseSkillDetail(selected)
+	if err != nil {
+		return err
+	}
+	if err := ctx.StateManager.AddSkillToProjectWithSource(ctx.Cwd, selected.ID, fullSkill.Version, selected.Repository, variables); err != nil {
+		return errors.Wrap(err, "保存项目状态失败")
+	}
+	return nil
+}
+
+func enableGlobalUse(selected spec.SkillMetadata, variables map[string]string) error {
+	if client, ok := hubClientIfAvailable(); ok {
+		_, err := client.UseGlobalSkill(context.Background(), httpapibiz.UseGlobalSkillRequest{SkillID: selected.ID, Repository: selected.Repository, Variables: variables})
+		if err != nil {
+			return errors.Wrap(err, "通过服务启用全局技能失败")
+		}
+		return nil
+	}
+	if err := CheckInitDependency(); err != nil {
+		return err
+	}
+	if _, err := globalservice.New().EnableSkill(selected.ID, selected.Repository, nil, variables); err != nil {
+		return errors.Wrap(err, "保存全局技能状态失败")
+	}
+	return nil
+}
+
+func resolveSkillsByPatternsFromRepos(patterns []string, repository string) ([]spec.SkillMetadata, error) {
+	repositories := []string(nil)
+	if repository != "" {
+		repositories = []string{repository}
+	}
+	if client, ok := hubClientIfAvailable(); ok {
+		matches, err := client.FindSkillsByPatterns(context.Background(), patterns, repositories)
+		if err != nil {
+			return nil, errors.Wrap(err, "通过服务按pattern查找技能失败")
+		}
+		return matches, nil
+	}
+	if err := CheckInitDependency(); err != nil {
+		return nil, err
+	}
+	repoManager, err := newRepositoryManager()
+	if err != nil {
+		return nil, errors.Wrap(err, "创建多仓库管理器失败")
+	}
+	matches, err := repoManager.FindSkillsByPatterns(patterns, repositories)
+	if err != nil {
+		return nil, errors.Wrap(err, "按pattern查找技能失败")
+	}
+	return matches, nil
+}
+
+func resolveSingleLiteralSkill(skillID string) ([]spec.SkillMetadata, error) {
 	if err := CheckInitDependency(); err != nil {
 		return nil, err
 	}
@@ -198,277 +440,143 @@ func resolveSingleLiteralSkill(skillID string) ([]spec.SkillMetadata, error) {
 	return repoManager.FindSkill(skillID)
 }
 
-func resolveSkillsByPatterns(patterns []string) ([]spec.SkillMetadata, error) {
-	if client, ok := hubClientIfAvailable(); ok {
-		matches, err := client.FindSkillsByPatterns(context.Background(), patterns, nil)
+func hasMatchingSkill(skills []spec.SkillMetadata, matcher pkgutils.Matcher, repository string) bool {
+	return len(matchingSkills(skills, matcher, repository)) > 0
+}
+
+func matchingSkills(skills []spec.SkillMetadata, matcher pkgutils.Matcher, repository string) []spec.SkillMetadata {
+	filtered := make([]spec.SkillMetadata, 0)
+	for _, candidate := range skills {
+		if matcher.Match(candidate.ID) && (repository == "" || candidate.Repository == repository) {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
+}
+
+func filterSkillsByRepository(skills []spec.SkillMetadata, repository string) []spec.SkillMetadata {
+	if repository == "" {
+		return skills
+	}
+	filtered := make([]spec.SkillMetadata, 0, len(skills))
+	for _, candidate := range skills {
+		if candidate.Repository == repository {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
+}
+
+func uniqueSkillMetadata(skills []spec.SkillMetadata) []spec.SkillMetadata {
+	seen := make(map[string]struct{}, len(skills))
+	unique := make([]spec.SkillMetadata, 0, len(skills))
+	for _, candidate := range skills {
+		key := candidate.Repository + "\x00" + candidate.ID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, candidate)
+	}
+	return unique
+}
+
+func selectUseCandidate(candidates []spec.SkillMetadata, options useOptions) (spec.SkillMetadata, error) {
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+	if options.NonInteractive {
+		repositories := make([]string, 0, len(candidates))
+		for _, candidate := range candidates {
+			repositories = append(repositories, candidate.Repository)
+		}
+		return spec.SkillMetadata{}, errors.NewWithCodef("use", errors.ErrInvalidInput, "技能存在多个来源仓库，请通过 --repo 指定：%s", strings.Join(repositories, ", "))
+	}
+	return chooseSkillCandidate(candidates)
+}
+
+// selectUseCandidates enables every distinct matched skill ID. Repository
+// ambiguity is resolved per ID, which retains batch-pattern behavior while
+// making a selected source explicit and deterministic.
+func selectUseCandidates(matches []spec.SkillMetadata, options useOptions) ([]spec.SkillMetadata, error) {
+	byID := make(map[string][]spec.SkillMetadata, len(matches))
+	ids := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if _, ok := byID[match.ID]; !ok {
+			ids = append(ids, match.ID)
+		}
+		byID[match.ID] = append(byID[match.ID], match)
+	}
+	sort.Strings(ids)
+	selected := make([]spec.SkillMetadata, 0, len(ids))
+	for _, id := range ids {
+		candidate, err := selectUseCandidate(byID[id], options)
 		if err != nil {
-			return nil, errors.Wrap(err, "通过服务按pattern查找技能失败")
+			return nil, err
 		}
-		return matches, nil
+		selected = append(selected, candidate)
 	}
-
-	if err := CheckInitDependency(); err != nil {
-		return nil, err
-	}
-	repoManager, err := newRepositoryManager()
-	if err != nil {
-		return nil, errors.Wrap(err, "创建多仓库管理器失败")
-	}
-	matches, err := repoManager.FindSkillsByPatterns(patterns, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "按pattern查找技能失败")
-	}
-	return matches, nil
-}
-
-// runUseOneSkill applies a single resolved skill (post-candidate-selection)
-// to the project state. It branches between local and service mode and
-// between project-local and global use.
-func runUseOneSkill(selected spec.SkillMetadata, isGlobal bool, agents []string) error {
-	if isGlobal {
-		if client, ok := hubClientIfAvailable(); ok {
-			return runUseGlobalOneViaService(client, selected, agents)
-		}
-		return runUseGlobalOne(selected, agents)
-	}
-	if client, ok := hubClientIfAvailable(); ok {
-		return runUseProjectOneViaService(client, selected)
-	}
-	return runUseProjectOne(selected)
-}
-
-func runUseProjectOne(selected spec.SkillMetadata) error {
-	repoManager, err := newRepositoryManager()
-	if err != nil {
-		return errors.Wrap(err, "创建多仓库管理器失败")
-	}
-
-	fullSkill, err := repoManager.LoadSkill(selected.ID, selected.Repository)
-	if err != nil {
-		return errors.Wrap(err, "加载技能详情失败")
-	}
-
-	fmt.Printf("启用技能: %s (%s)\n", fullSkill.Name, selected.ID)
-	fmt.Printf("来源仓库: %s\n", fullSkill.Repository)
-	fmt.Printf("描述: %s\n", fullSkill.Description)
-
-	if len(fullSkill.Tags) > 0 {
-		fmt.Printf("标签: %s\n", strings.Join(fullSkill.Tags, ", "))
-	}
-
-	ctx, err := RequireInitAndWorkspace("")
-	if err != nil {
-		return err
-	}
-
-	hasSkill, err := ctx.StateManager.ProjectHasSkill(ctx.Cwd, selected.ID)
-	if err != nil {
-		return err
-	}
-	if hasSkill {
-		if !confirmSkillReconfigure() {
-			fmt.Println("❌ 取消操作")
-			return nil
-		}
-	}
-
-	variables, err := promptSkillVariables(fullSkill)
-	if err != nil {
-		return err
-	}
-
-	if err := ctx.StateManager.AddSkillToProjectWithSource(ctx.Cwd, selected.ID, fullSkill.Version, selected.Repository, variables); err != nil {
-		return errors.Wrap(err, "保存项目状态失败")
-	}
-
-	fmt.Printf("\n✅ 技能 '%s' 已成功标记为使用！\n", selected.ID)
-	fmt.Println("使用 'skill-hub apply' 将技能物理分发到当前项目")
-	return nil
-}
-
-func runUseProjectOneViaService(client serviceUseClient, selected spec.SkillMetadata) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	fullSkill, err := client.GetSkillDetail(context.Background(), selected.ID, selected.Repository)
-	if err != nil {
-		return errors.Wrap(err, "通过服务加载技能详情失败")
-	}
-
-	fmt.Printf("启用技能: %s (%s)\n", fullSkill.Name, selected.ID)
-	fmt.Printf("来源仓库: %s\n", fullSkill.Repository)
-	fmt.Printf("描述: %s\n", fullSkill.Description)
-	if len(fullSkill.Tags) > 0 {
-		fmt.Printf("标签: %s\n", strings.Join(fullSkill.Tags, ", "))
-	}
-
-	if projectStatus, err := client.GetProjectStatus(context.Background(), cwd, selected.ID); err == nil && projectStatus.Item != nil && len(projectStatus.Item.Items) > 0 {
-		if !confirmSkillReconfigure() {
-			fmt.Println("❌ 取消操作")
-			return nil
-		}
-	}
-
-	variables, err := promptSkillVariables(fullSkill)
-	if err != nil {
-		return err
-	}
-
-	_, err = client.UseSkill(context.Background(), httpapibiz.UseSkillRequest{
-		ProjectPath: cwd,
-		SkillID:     selected.ID,
-		Repository:  selected.Repository,
-		Variables:   variables,
-	})
-	if err != nil {
-		return errors.Wrap(err, "通过服务启用技能失败")
-	}
-
-	fmt.Printf("\n✅ 技能 '%s' 已成功标记为使用！\n", selected.ID)
-	fmt.Println("使用 'skill-hub apply' 将技能物理分发到当前项目")
-	return nil
-}
-
-func runUseGlobalOne(selected spec.SkillMetadata, agents []string) error {
-	repoManager, err := newRepositoryManager()
-	if err != nil {
-		return errors.Wrap(err, "创建多仓库管理器失败")
-	}
-
-	fullSkill, err := repoManager.LoadSkill(selected.ID, selected.Repository)
-	if err != nil {
-		return errors.Wrap(err, "加载技能详情失败")
-	}
-
-	fmt.Printf("全局启用技能: %s (%s)\n", fullSkill.Name, selected.ID)
-	fmt.Printf("来源仓库: %s\n", fullSkill.Repository)
-	fmt.Printf("描述: %s\n", fullSkill.Description)
-	if len(fullSkill.Tags) > 0 {
-		fmt.Printf("标签: %s\n", strings.Join(fullSkill.Tags, ", "))
-	}
-
-	variables, err := promptSkillVariables(fullSkill)
-	if err != nil {
-		return err
-	}
-
-	result, err := globalservice.New().EnableSkill(selected.ID, selected.Repository, agents, variables)
-	if err != nil {
-		return errors.Wrap(err, "保存全局技能状态失败")
-	}
-
-	fmt.Printf("\n✅ 技能 '%s' 已成功标记为本机全局使用！\n", result.SkillID)
-	fmt.Printf("目标 agent: %s\n", strings.Join(result.Agents, ", "))
-	fmt.Println("使用 'skill-hub apply --global' 刷新本机 agent 全局 skills 目录")
-	return nil
-}
-
-func runUseGlobalOneViaService(client serviceUseClient, selected spec.SkillMetadata, agents []string) error {
-	fullSkill, err := client.GetSkillDetail(context.Background(), selected.ID, selected.Repository)
-	if err != nil {
-		return errors.Wrap(err, "通过服务加载技能详情失败")
-	}
-
-	fmt.Printf("全局启用技能: %s (%s)\n", fullSkill.Name, selected.ID)
-	fmt.Printf("来源仓库: %s\n", fullSkill.Repository)
-	fmt.Printf("描述: %s\n", fullSkill.Description)
-	if len(fullSkill.Tags) > 0 {
-		fmt.Printf("标签: %s\n", strings.Join(fullSkill.Tags, ", "))
-	}
-
-	variables, err := promptSkillVariables(fullSkill)
-	if err != nil {
-		return err
-	}
-
-	resp, err := client.UseGlobalSkill(context.Background(), httpapibiz.UseGlobalSkillRequest{
-		SkillID:    selected.ID,
-		Repository: selected.Repository,
-		Agents:     agents,
-		Variables:  variables,
-	})
-	if err != nil {
-		return errors.Wrap(err, "通过服务启用全局技能失败")
-	}
-
-	skillID := selected.ID
-	enabledAgents := agents
-	if resp.Item != nil {
-		skillID = resp.Item.SkillID
-		enabledAgents = resp.Item.Agents
-	}
-
-	fmt.Printf("\n✅ 技能 '%s' 已成功标记为本机全局使用！\n", skillID)
-	fmt.Printf("目标 agent: %s\n", strings.Join(enabledAgents, ", "))
-	fmt.Println("使用 'skill-hub apply --global' 刷新本机 agent 全局 skills 目录")
-	return nil
-}
-
-// compilePatterns is defined in list.go (same package).
-
-type serviceUseClient interface {
-	FindSkillCandidates(ctx context.Context, skillID string) ([]spec.SkillMetadata, error)
-	FindSkillsByPatterns(ctx context.Context, patterns, repoNames []string) ([]spec.SkillMetadata, error)
-	GetSkillDetail(ctx context.Context, skillID, repoName string) (*spec.Skill, error)
-	GetProjectStatus(ctx context.Context, projectPath, skillID string) (*httpapibiz.ProjectStatusData, error)
-	UseSkill(ctx context.Context, req httpapibiz.UseSkillRequest) (*httpapibiz.UseSkillData, error)
-	UseGlobalSkill(ctx context.Context, req httpapibiz.UseGlobalSkillRequest) (*httpapibiz.UseGlobalSkillData, error)
+	return selected, nil
 }
 
 func chooseSkillCandidate(skills []spec.SkillMetadata) (spec.SkillMetadata, error) {
 	if len(skills) == 1 {
 		return skills[0], nil
 	}
-
 	fmt.Printf("发现 %d 个同名技能，请选择要使用的技能:\n", len(skills))
 	for i, skill := range skills {
 		fmt.Printf("  %d. [%s] %s - %s\n", i+1, skill.Repository, skill.Name, skill.Description)
 	}
-
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("请选择 (输入编号): ")
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(input)
-
 	var choice int
 	if _, err := fmt.Sscanf(input, "%d", &choice); err != nil || choice < 1 || choice > len(skills) {
 		return spec.SkillMetadata{}, errors.NewWithCode("chooseSkillCandidate", errors.ErrInvalidInput, "无效的选择")
 	}
-
 	return skills[choice-1], nil
-}
-
-func promptSkillVariables(fullSkill *spec.Skill) (map[string]string, error) {
-	variables := make(map[string]string)
-	if len(fullSkill.Variables) == 0 {
-		fmt.Println("\n该技能没有可配置的变量")
-		return variables, nil
-	}
-
-	fmt.Println("\n请设置技能变量 (按Enter使用默认值):")
-	reader := bufio.NewReader(os.Stdin)
-	for _, variable := range fullSkill.Variables {
-		defaultValue := variable.Default
-		fmt.Printf("%s [%s]: ", variable.Name, defaultValue)
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-		if input == "" {
-			variables[variable.Name] = defaultValue
-		} else {
-			variables[variable.Name] = input
-		}
-	}
-	return variables, nil
 }
 
 func confirmSkillReconfigure() bool {
 	fmt.Println("⚠️  该技能已在当前项目启用")
 	fmt.Print("是否重新配置变量？ [y/N]: ")
-
 	reader := bufio.NewReader(os.Stdin)
 	response, _ := reader.ReadString('\n')
 	response = strings.TrimSpace(response)
 	return response == "y" || response == "Y"
+}
+
+func renderUseSummary(summary *UseSummary) {
+	if summary == nil {
+		return
+	}
+	if summary.DryRun {
+		fmt.Println("=== use 预览（dry-run） ===")
+	} else {
+		fmt.Println("=== use 结果 ===")
+	}
+	for _, item := range summary.Items {
+		switch item.Status {
+		case "enabled":
+			fmt.Printf("✓ 已启用 %s [%s]", item.SkillID, item.Repository)
+		case "planned":
+			fmt.Printf("[计划] 将启用 %s [%s]", item.SkillID, item.Repository)
+		case "skipped":
+			fmt.Printf("- 已跳过 %s", item.Input)
+		case "error":
+			fmt.Printf("✗ %s", item.Input)
+		}
+		if item.Version != "" {
+			fmt.Printf(" (v%s)", item.Version)
+		}
+		if item.NeedsVariables {
+			fmt.Print("；包含可配置变量")
+		}
+		if item.Error != "" {
+			fmt.Printf("：%s", item.Error)
+		}
+		fmt.Println()
+	}
+	fmt.Printf("范围: %s；总计: %d，已启用: %d，计划: %d，跳过: %d，失败: %d\n", summary.Scope, summary.Total, summary.Enabled, summary.Planned, summary.Skipped, summary.Failed)
 }
