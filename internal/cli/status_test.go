@@ -218,6 +218,20 @@ func TestFilterGlobalStatusSummaryByIDs(t *testing.T) {
 	}
 }
 
+func TestFilterGlobalStatusSummaryByIDsCountsDistinctSkills(t *testing.T) {
+	summary := &globalservice.StatusSummary{
+		Items: []globalservice.StatusItem{
+			{SkillID: "magic-helper", Agent: "claude", Status: globalservice.StatusOK},
+			{SkillID: "magic-helper", Agent: "codex", Status: globalservice.StatusOK},
+		},
+	}
+
+	got := filterGlobalStatusSummaryByIDs(summary, map[string]struct{}{"magic-helper": {}})
+	if got.SkillCount != 1 {
+		t.Errorf("SkillCount = %d, want 1", got.SkillCount)
+	}
+}
+
 func TestRenderGlobalStatusSummaryShowsVersion(t *testing.T) {
 	summary := &globalservice.StatusSummary{
 		Scope:      "global",
@@ -233,5 +247,46 @@ func TestRenderGlobalStatusSummaryShowsVersion(t *testing.T) {
 	})
 	if !strings.Contains(output, "版本") || !strings.Contains(output, "1.2.3") {
 		t.Fatalf("global status output must include version, got %q", output)
+	}
+}
+
+func TestRenderGlobalStatusSummaryAggregatesAgentsBySkill(t *testing.T) {
+	summary := &globalservice.StatusSummary{
+		GlobalPath: "/home/.skill-hub/global/skills",
+		SkillCount: 1,
+		Items: []globalservice.StatusItem{
+			{SkillID: "demo-skill", Version: "1.2.3", Agent: "opencode", Status: globalservice.StatusOK},
+			{SkillID: "demo-skill", Version: "1.2.3", Agent: "codex", Status: globalservice.StatusOK},
+			{SkillID: "demo-skill", Version: "1.2.3", Agent: "claude", Status: globalservice.StatusOK},
+		},
+	}
+
+	output := captureStdout(t, func() {
+		renderGlobalStatusSummary(summary)
+	})
+	if got := strings.Count(output, "demo-skill"); got != 1 {
+		t.Fatalf("demo-skill appeared %d times, want one aggregated row: %q", got, output)
+	}
+	if !strings.Contains(output, "claude,codex,opencode") {
+		t.Fatalf("output must include the aggregated agent list, got %q", output)
+	}
+}
+
+func TestRenderGlobalStatusSummaryShowsAgentDetailsForMixedStatus(t *testing.T) {
+	summary := &globalservice.StatusSummary{
+		GlobalPath: "/home/.skill-hub/global/skills",
+		Items: []globalservice.StatusItem{
+			{SkillID: "demo-skill", Version: "1.2.3", Agent: "codex", Status: globalservice.StatusOK},
+			{SkillID: "demo-skill", Version: "1.2.3", Agent: "claude", Status: globalservice.StatusStale, Message: "来源已更新"},
+		},
+	}
+
+	output := captureStdout(t, func() {
+		renderGlobalStatusSummary(summary)
+	})
+	for _, want := range []string{"mixed", "claude: 🔄 outdated: 来源已更新", "codex: ✅ synced"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output must include %q, got %q", want, output)
+		}
 	}
 }

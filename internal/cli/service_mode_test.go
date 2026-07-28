@@ -326,7 +326,7 @@ func TestRunStatusViaServiceWithoutLocalConfig(t *testing.T) {
 			}
 		})
 	})
-	if !strings.Contains(output, "demo-skill") || !strings.Contains(output, "Synced") {
+	if !strings.Contains(output, "demo-skill") || !strings.Contains(output, "synced") {
 		t.Fatalf("unexpected status output: %q", output)
 	}
 }

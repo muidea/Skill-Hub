@@ -82,20 +82,75 @@ type ProjectState struct {
 	LastSync        string               `json:"last_sync,omitempty"`
 }
 
-// 技能状态常量
+// 技能检查状态常量。项目与全局 status 共用这些值。
 const (
-	SkillStatusSynced                      = "Synced"                      // 本地与仓库一致
-	SkillStatusModified                    = "Modified"                    // 本地有未反馈的修改
-	SkillStatusOutdated                    = "Outdated"                    // 仓库版本领先于本地
-	SkillStatusMissing                     = "Missing"                     // 技能已启用但本地文件缺失
-	SkillStatusModifiedAgainstOutdatedRepo = "ModifiedAgainstOutdatedRepo" // 本地基于旧版本发生修改
+	StatusSynced      = "synced"      // 目标副本与来源一致
+	StatusModified    = "modified"    // 目标副本被本地修改
+	StatusOutdated    = "outdated"    // 来源已更新，目标需要刷新
+	StatusDiverged    = "diverged"    // 来源已更新且目标也有修改，需人工合并
+	StatusMissing     = "missing"     // 期望存在的目标副本不存在
+	StatusConflict    = "conflict"    // 存在同名但不可安全接管的目标
+	StatusOrphaned    = "orphaned"    // 存在受管副本，但状态记录已不存在
+	StatusUnavailable = "unavailable" // 目标环境或来源不可用
+	StatusMixed       = "mixed"       // 聚合行中存在不同目标状态
+
+	// 以下名称保留给内部调用方；值已经统一为规范状态。
+	SkillStatusSynced                      = StatusSynced
+	SkillStatusModified                    = StatusModified
+	SkillStatusOutdated                    = StatusOutdated
+	SkillStatusMissing                     = StatusMissing
+	SkillStatusModifiedAgainstOutdatedRepo = StatusDiverged
 )
+
+// NormalizeSkillStatus upgrades persisted pre-unification project state values
+// to the canonical status vocabulary.
+func NormalizeSkillStatus(status string) string {
+	switch status {
+	case "Synced", StatusSynced, "ok":
+		return StatusSynced
+	case "Modified", StatusModified:
+		return StatusModified
+	case "Outdated", StatusOutdated, "stale":
+		return StatusOutdated
+	case "ModifiedAgainstOutdatedRepo", StatusDiverged:
+		return StatusDiverged
+	case "Missing", StatusMissing, "not_applied":
+		return StatusMissing
+	case StatusConflict:
+		return StatusConflict
+	case StatusOrphaned:
+		return StatusOrphaned
+	case StatusUnavailable, "missing_agent_dir", "error":
+		return StatusUnavailable
+	default:
+		return status
+	}
+}
+
+// LegacyProjectSkillStatus returns the pre-unification project status name for
+// temporary JSON compatibility. Empty means the status had no project legacy name.
+func LegacyProjectSkillStatus(status string) string {
+	switch NormalizeSkillStatus(status) {
+	case StatusSynced:
+		return "Synced"
+	case StatusModified:
+		return "Modified"
+	case StatusOutdated:
+		return "Outdated"
+	case StatusDiverged:
+		return "ModifiedAgainstOutdatedRepo"
+	case StatusMissing:
+		return "Missing"
+	default:
+		return ""
+	}
+}
 
 // SkillVars 表示项目中某个技能的变量配置和状态
 type SkillVars struct {
 	SkillID          string            `json:"skill_id"`
 	Version          string            `json:"version"`
-	Status           string            `json:"status,omitempty"`            // 技能状态：Synced, Modified, Outdated, Missing
+	Status           string            `json:"status,omitempty"`            // 规范技能状态：synced、modified、outdated、diverged、missing
 	SourceRepository string            `json:"source_repository,omitempty"` // 首次 use 时选中的来源仓库
 	AppliedHash      string            `json:"applied_hash,omitempty"`      // 最近一次 apply 后的技能目录内容指纹
 	AppliedCommit    string            `json:"applied_commit,omitempty"`    // 最近一次 apply 时来源仓库提交，预留字段

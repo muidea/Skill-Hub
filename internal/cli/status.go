@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -23,10 +24,10 @@ var statusCmd = &cobra.Command{
 	Use:   "status [id] | --pattern <id-or-glob>...",
 	Short: "检查技能状态",
 	Long: `对比项目本地工作区文件与技能仓库源文件的差异，显示技能状态：
-- Synced: 本地与仓库一致
-- Modified: 本地有未反馈的修改
-- Outdated: 仓库版本领先于本地
-- Missing: 技能已启用但本地文件缺失
+- synced: 目标副本与来源一致
+- modified: 目标副本被本地修改
+- outdated: 来源已更新，目标需要刷新
+- missing: 已启用但目标副本不存在
 
 不带 --pattern 时检查所有已启用技能；带 --pattern 时只显示 ID 匹配
 pattern 的已启用技能。请引用带通配符的 pattern，避免 shell 在 skill-hub 启动前展开。`,
@@ -69,6 +70,7 @@ func runStatusGlobal(skillID string, agents []string, jsonOutput bool) error {
 	if client, ok := hubClientIfAvailable(); ok {
 		data, err := client.GetGlobalStatus(context.Background(), skillID, agents)
 		if err == nil && data.Item != nil {
+			normalizeGlobalStatusSummary(data.Item)
 			if jsonOutput {
 				return writeJSON(data.Item)
 			}
@@ -105,6 +107,7 @@ func runStatus(skillID string, verbose bool, jsonOutputOpt ...bool) error {
 
 		data, err := client.GetProjectStatus(context.Background(), cwd, skillID)
 		if err == nil && data.Item != nil {
+			normalizeProjectStatusSummary(data.Item)
 			if jsonOutput {
 				return writeJSON(data.Item)
 			}
@@ -181,6 +184,7 @@ func runStatusByPatterns(patterns []string, verbose bool, jsonOutput bool) error
 		if data.Item == nil {
 			return nil
 		}
+		normalizeProjectStatusSummary(data.Item)
 		filtered, err := filterStatusSummaryByPatterns(data.Item, patterns)
 		if err != nil {
 			return err
@@ -232,12 +236,29 @@ func filterStatusSummaryByPatterns(summary *projectstatusservice.ProjectStatusSu
 	return filterStatusSummaryByIDs(summary, stringSetFromSlice(matched)), nil
 }
 
+func normalizeProjectStatusSummary(summary *projectstatusservice.ProjectStatusSummary) {
+	if summary == nil {
+		return
+	}
+	if summary.Scope == "" {
+		summary.Scope = "project"
+	}
+	for i := range summary.Items {
+		item := &summary.Items[i]
+		item.Status = spec.NormalizeSkillStatus(item.Status)
+		if item.LegacyStatus == "" {
+			item.LegacyStatus = spec.LegacyProjectSkillStatus(item.Status)
+		}
+	}
+}
+
 func filterStatusSummaryByIDs(summary *projectstatusservice.ProjectStatusSummary, ids map[string]struct{}) *projectstatusservice.ProjectStatusSummary {
 	if summary == nil {
 		return nil
 	}
 	out := &projectstatusservice.ProjectStatusSummary{
 		ProjectPath: summary.ProjectPath,
+		Scope:       summary.Scope,
 		SkillCount:  0,
 	}
 	for _, item := range summary.Items {
@@ -248,6 +269,58 @@ func filterStatusSummaryByIDs(summary *projectstatusservice.ProjectStatusSummary
 	}
 	out.SkillCount = len(out.Items)
 	return out
+}
+
+func uniqueGlobalSkillIDs(items []globalservice.StatusItem) map[string]struct{} {
+	ids := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		ids[item.SkillID] = struct{}{}
+	}
+	return ids
+}
+
+func normalizeGlobalStatusSummary(summary *globalservice.StatusSummary) {
+	if summary == nil {
+		return
+	}
+	if summary.Scope == "" {
+		summary.Scope = "global"
+	}
+	for i := range summary.Items {
+		normalizeGlobalStatusItem(&summary.Items[i])
+	}
+	for i := range summary.Orphaned {
+		normalizeGlobalStatusItem(&summary.Orphaned[i])
+	}
+}
+
+func normalizeGlobalStatusItem(item *globalservice.StatusItem) {
+	rawStatus := item.Status
+	item.Status = spec.NormalizeSkillStatus(item.Status)
+	if item.LegacyStatus != "" {
+		return
+	}
+	switch rawStatus {
+	case "ok", "not_applied", "modified", "stale", "conflict", "orphaned", "missing_agent_dir", "error":
+		item.LegacyStatus = rawStatus
+		return
+	}
+	switch item.Status {
+	case spec.StatusSynced:
+		item.LegacyStatus = "ok"
+	case spec.StatusMissing:
+		item.LegacyStatus = "not_applied"
+	case spec.StatusModified:
+		item.LegacyStatus = "modified"
+	case spec.StatusOutdated:
+		item.LegacyStatus = "stale"
+	case spec.StatusConflict:
+		item.LegacyStatus = "conflict"
+	case spec.StatusOrphaned:
+		item.LegacyStatus = "orphaned"
+	case spec.StatusUnavailable:
+		item.LegacyStatus = "error"
+	}
 }
 
 // runStatusGlobalByPatterns renders globally enabled skills whose IDs match
@@ -261,6 +334,7 @@ func runStatusGlobalByPatterns(patterns []string, agents []string, jsonOutput bo
 		if data.Item == nil {
 			return nil
 		}
+		normalizeGlobalStatusSummary(data.Item)
 		filtered, err := filterGlobalStatusSummaryByPatterns(data.Item, patterns)
 		if err != nil {
 			return err
@@ -323,7 +397,7 @@ func filterGlobalStatusSummaryByIDs(summary *globalservice.StatusSummary, ids ma
 		}
 		out.Items = append(out.Items, item)
 	}
-	out.SkillCount = len(out.Items)
+	out.SkillCount = len(uniqueGlobalSkillIDs(out.Items))
 	return out
 }
 
@@ -377,11 +451,11 @@ func renderProjectStatusSummary(summary *projectstatusservice.ProjectStatusSumma
 	}
 
 	fmt.Println("\n说明:")
-	fmt.Println("✅ Synced: 本地与仓库一致")
-	fmt.Println("⚠️  Modified: 本地有未反馈的修改")
-	fmt.Println("🔄 Outdated: 仓库版本领先于本地")
-	fmt.Println("⛔ ModifiedAgainstOutdatedRepo: 本地基于旧版本发生修改，反馈前需先刷新或手工合并")
-	fmt.Println("❌ Missing: 技能已启用但本地文件缺失")
+	fmt.Println("✅ synced: 目标副本与来源一致")
+	fmt.Println("⚠️  modified: 目标副本有本地修改")
+	fmt.Println("🔄 outdated: 来源已更新，目标需要刷新")
+	fmt.Println("⛔ diverged: 来源已更新且目标也有修改，需先手工合并")
+	fmt.Println("❌ missing: 已启用但目标副本不存在")
 }
 
 func renderGlobalStatusSummary(summary *globalservice.StatusSummary) {
@@ -412,28 +486,35 @@ func renderGlobalStatusSummary(summary *globalservice.StatusSummary) {
 		return
 	}
 
-	fmt.Printf("\n全局启用技能数: %d\n", summary.SkillCount)
+	rows := summarizeGlobalStatusItems(summary.Items)
+	fmt.Printf("\n全局启用技能数: %d\n", len(rows))
 	fmt.Println("\n=== 全局技能状态 ===")
 	maxIDLength := 2
 	maxVersionLength := len("版本")
-	for _, item := range summary.Items {
-		if len(item.SkillID) > maxIDLength {
-			maxIDLength = len(item.SkillID)
+	maxAgentLength := len("Agent")
+	for _, row := range rows {
+		if len(row.SkillID) > maxIDLength {
+			maxIDLength = len(row.SkillID)
 		}
-		if len(item.Version) > maxVersionLength {
-			maxVersionLength = len(item.Version)
+		if len(row.Version) > maxVersionLength {
+			maxVersionLength = len(row.Version)
+		}
+		if len(row.Agents) > maxAgentLength {
+			maxAgentLength = len(row.Agents)
 		}
 	}
-	fmt.Printf("%-*s %-*s %-10s 状态\n", maxIDLength, "ID", maxVersionLength, "版本", "Agent")
-	fmt.Println(strings.Repeat("-", maxIDLength+1+maxVersionLength+1+10+1+12))
-	for _, item := range summary.Items {
-		version := item.Version
-		if version == "" {
-			version = "—"
-		}
-		fmt.Printf("%-*s %-*s %-10s %s %s\n", maxIDLength, item.SkillID, maxVersionLength, version, item.Agent, globalStatusSymbol(item.Status), item.Status)
-		if item.Message != "" {
-			fmt.Printf("%-*s %-*s %-10s   %s\n", maxIDLength, "", maxVersionLength, "", "", item.Message)
+	fmt.Printf("%-*s %-*s %-*s 状态\n", maxIDLength, "ID", maxVersionLength, "版本", maxAgentLength, "Agent")
+	fmt.Println(strings.Repeat("-", maxIDLength+1+maxVersionLength+1+maxAgentLength+1+12))
+	for _, row := range rows {
+		fmt.Printf("%-*s %-*s %-*s %s %s\n", maxIDLength, row.SkillID, maxVersionLength, row.Version, maxAgentLength, row.Agents, globalStatusSymbol(row.Status), row.Status)
+		if row.ShowAgentDetails {
+			for _, item := range row.Items {
+				detail := fmt.Sprintf("%s: %s %s", item.Agent, globalStatusSymbol(item.Status), item.Status)
+				if item.Message != "" {
+					detail += ": " + item.Message
+				}
+				fmt.Printf("%-*s %-*s %-*s   %s\n", maxIDLength, "", maxVersionLength, "", maxAgentLength, "", detail)
+			}
 		}
 	}
 	if len(summary.Orphaned) > 0 {
@@ -444,11 +525,76 @@ func renderGlobalStatusSummary(summary *globalservice.StatusSummary) {
 	}
 
 	fmt.Println("\n说明:")
-	fmt.Println("✅ ok: Skill-Hub 状态、来源仓库与 agent 全局目录一致")
-	fmt.Println("➕ not_applied: 已全局启用但尚未写入 agent 目录")
+	fmt.Println("✅ synced: 目标副本与来源一致")
+	fmt.Println("➕ missing: 已启用但目标副本不存在")
 	fmt.Println("⚠️  modified/conflict/orphaned: 需要人工确认后处理")
-	fmt.Println("🔄 stale: 来源仓库已变化，可运行 'skill-hub apply --global' 刷新")
-	fmt.Println("❌ missing_agent_dir: agent skills 目录不存在，apply --global 会尝试创建")
+	fmt.Println("🔄 outdated: 来源已变化，可运行 'skill-hub apply --global' 刷新")
+	fmt.Println("❌ unavailable: agent skills 目录或来源不可用")
+	fmt.Println("⚠️  mixed: 不同 agent 的状态不一致，详见该技能下方的 agent 明细")
+}
+
+type globalStatusRow struct {
+	SkillID          string
+	Version          string
+	Agents           string
+	Status           string
+	Items            []globalservice.StatusItem
+	ShowAgentDetails bool
+}
+
+func summarizeGlobalStatusItems(items []globalservice.StatusItem) []globalStatusRow {
+	groups := make(map[string][]globalservice.StatusItem)
+	ids := make([]string, 0)
+	for _, item := range items {
+		if _, ok := groups[item.SkillID]; !ok {
+			ids = append(ids, item.SkillID)
+		}
+		groups[item.SkillID] = append(groups[item.SkillID], item)
+	}
+	sort.Strings(ids)
+
+	rows := make([]globalStatusRow, 0, len(ids))
+	for _, id := range ids {
+		group := groups[id]
+		sort.SliceStable(group, func(i, j int) bool {
+			return group[i].Agent < group[j].Agent
+		})
+
+		agents := make([]string, 0, len(group))
+		versions := make(map[string]struct{})
+		statuses := make(map[string]struct{})
+		showDetails := false
+		for _, item := range group {
+			agents = append(agents, item.Agent)
+			versions[item.Version] = struct{}{}
+			statuses[item.Status] = struct{}{}
+			showDetails = showDetails || item.Message != ""
+		}
+
+		version := group[0].Version
+		if version == "" {
+			version = "—"
+		}
+		status := group[0].Status
+		if len(versions) > 1 {
+			version = spec.StatusMixed
+			showDetails = true
+		}
+		if len(statuses) > 1 {
+			status = spec.StatusMixed
+			showDetails = true
+		}
+
+		rows = append(rows, globalStatusRow{
+			SkillID:          id,
+			Version:          version,
+			Agents:           strings.Join(agents, ","),
+			Status:           status,
+			Items:            group,
+			ShowAgentDetails: showDetails,
+		})
+	}
+	return rows
 }
 
 func globalStatusSymbol(status string) string {
@@ -462,6 +608,8 @@ func globalStatusSymbol(status string) string {
 	case globalservice.StatusMissingAgentDir:
 		return "❌"
 	case globalservice.StatusModified, globalservice.StatusConflict, globalservice.StatusOrphaned:
+		return "⚠️"
+	case spec.StatusMixed:
 		return "⚠️"
 	default:
 		return "❓"

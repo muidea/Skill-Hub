@@ -17,6 +17,7 @@ import (
 
 type ProjectStatusSummary struct {
 	ProjectPath string            `json:"project_path"`
+	Scope       string            `json:"scope"`
 	SkillCount  int               `json:"skill_count"`
 	Items       []SkillStatusItem `json:"items"`
 }
@@ -24,6 +25,8 @@ type ProjectStatusSummary struct {
 type SkillStatusItem struct {
 	SkillID          string `json:"skill_id"`
 	Status           string `json:"status"`
+	LegacyStatus     string `json:"legacy_status,omitempty"`
+	Reason           string `json:"reason,omitempty"`
 	SourceRepository string `json:"source_repository,omitempty"`
 	LocalVersion     string `json:"local_version,omitempty"`
 	RepoVersion      string `json:"repo_version,omitempty"`
@@ -75,7 +78,7 @@ func (p *ProjectStatus) Inspect(projectPath, skillID string) (*ProjectStatusSumm
 		items = append(items, *item)
 
 		existing := projectState.Skills[currentSkillID]
-		existing.Status = item.Status
+		existing.Status = spec.NormalizeSkillStatus(item.Status)
 		if item.LocalVersion != "" {
 			existing.Version = item.LocalVersion
 		}
@@ -97,6 +100,7 @@ func (p *ProjectStatus) Inspect(projectPath, skillID string) (*ProjectStatusSumm
 
 	return &ProjectStatusSummary{
 		ProjectPath: projectState.ProjectPath,
+		Scope:       "project",
 		SkillCount:  len(items),
 		Items:       items,
 	}, nil
@@ -122,7 +126,7 @@ func (p *ProjectStatus) inspectSkill(projectPath, skillID string, skillVars spec
 	}
 
 	if _, err := os.Stat(localSkillMdPath); os.IsNotExist(err) {
-		item.Status = spec.SkillStatusMissing
+		setStatus(item, spec.StatusMissing, "missing_local_copy")
 		item.LocalVersion = "—"
 		return item, nil
 	}
@@ -133,19 +137,19 @@ func (p *ProjectStatus) inspectSkill(projectPath, skillID string, skillVars spec
 		if eqErr == nil && !equal {
 			localVersion, localHash, localErr := getLocalSkillInfo(localSkillMdPath)
 			if localErr != nil {
-				item.Status = spec.SkillStatusModified
+				setStatus(item, spec.StatusModified, "local_metadata_unreadable")
 				item.LocalVersion = "unknown"
 				return item, nil
 			}
 			item.LocalVersion = localVersion
 			if compareVersions(repoVersion, localVersion) > 0 {
 				if skillVars.AppliedHash != "" && localHash == skillVars.AppliedHash {
-					item.Status = spec.SkillStatusOutdated
+					setStatus(item, spec.StatusOutdated, "source_newer")
 				} else {
-					item.Status = spec.SkillStatusModifiedAgainstOutdatedRepo
+					setStatus(item, spec.StatusDiverged, "source_newer_and_local_modified")
 				}
 			} else {
-				item.Status = spec.SkillStatusModified
+				setStatus(item, spec.StatusModified, "local_content_changed")
 			}
 			return item, nil
 		}
@@ -158,18 +162,40 @@ func (p *ProjectStatus) inspectSkill(projectPath, skillID string, skillVars spec
 	item.LocalVersion = localVersion
 
 	if !repoExists {
-		item.Status = spec.SkillStatusModified
+		setStatus(item, spec.StatusModified, "source_missing")
 		return item, nil
 	}
 
-	item.Status = determineSkillStatus(localVersion, localHash, repoVersion, repoHash)
+	status := determineSkillStatus(localVersion, localHash, repoVersion, repoHash)
+	setStatus(item, status, statusReason(status))
 	if item.Status == "" {
-		item.Status = skillVars.Status
+		item.Status = spec.NormalizeSkillStatus(skillVars.Status)
 		if item.Status == "" {
-			item.Status = spec.SkillStatusModified
+			item.Status = spec.StatusModified
 		}
+		item.LegacyStatus = spec.LegacyProjectSkillStatus(item.Status)
+		item.Reason = "status_unavailable"
 	}
 	return item, nil
+}
+
+func setStatus(item *SkillStatusItem, status, reason string) {
+	item.Status = spec.NormalizeSkillStatus(status)
+	item.LegacyStatus = spec.LegacyProjectSkillStatus(item.Status)
+	item.Reason = reason
+}
+
+func statusReason(status string) string {
+	switch spec.NormalizeSkillStatus(status) {
+	case spec.StatusSynced:
+		return "source_and_target_match"
+	case spec.StatusOutdated:
+		return "source_newer"
+	case spec.StatusModified:
+		return "local_content_changed"
+	default:
+		return ""
+	}
 }
 
 func (p *ProjectStatus) repoSkillHash(skillID, sourceRepository string) (string, error) {

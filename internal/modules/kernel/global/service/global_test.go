@@ -39,6 +39,12 @@ func TestGlobal_EnableApplyAndInspect(t *testing.T) {
 	if got := statusBeforeApply.Items[0].Status; got != StatusMissingAgentDir {
 		t.Fatalf("status before apply = %q, want %q", got, StatusMissingAgentDir)
 	}
+	if got := statusBeforeApply.Items[0].LegacyStatus; got != "missing_agent_dir" {
+		t.Fatalf("legacy status before apply = %q, want missing_agent_dir", got)
+	}
+	if got := statusBeforeApply.Items[0].Reason; got != "agent_directory_missing" {
+		t.Fatalf("reason before apply = %q, want agent_directory_missing", got)
+	}
 
 	applyResult, err := svc.Apply("", nil, false, false)
 	if err != nil {
@@ -62,6 +68,9 @@ func TestGlobal_EnableApplyAndInspect(t *testing.T) {
 	}
 	if got := statusAfterApply.Items[0].Status; got != StatusOK {
 		t.Fatalf("status after apply = %q, want %q", got, StatusOK)
+	}
+	if got := statusAfterApply.Items[0].LegacyStatus; got != "ok" {
+		t.Fatalf("legacy status after apply = %q, want ok", got)
 	}
 }
 

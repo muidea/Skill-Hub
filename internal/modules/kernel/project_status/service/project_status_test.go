@@ -177,6 +177,12 @@ func TestProjectStatus_InspectUsesSourceRepository(t *testing.T) {
 	if len(summary.Items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(summary.Items))
 	}
+	if summary.Scope != "project" {
+		t.Fatalf("scope = %q, want project", summary.Scope)
+	}
+	if summary.Items[0].Status != spec.StatusSynced || summary.Items[0].LegacyStatus != "Synced" || summary.Items[0].Reason != "source_and_target_match" {
+		t.Fatalf("unexpected normalized status item: %+v", summary.Items[0])
+	}
 	if summary.Items[0].RepoVersion != "2.0.0" {
 		t.Fatalf("expected repo version 2.0.0, got %q", summary.Items[0].RepoVersion)
 	}

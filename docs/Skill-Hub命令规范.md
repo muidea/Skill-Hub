@@ -75,7 +75,7 @@ ${XDG_DATA_HOME:-$HOME/.local/share}/skill-hub/agent-skills
 |------|----------|------|
 | `status` | 检查技能状态 | `skill-hub status [id] | [--pattern <glob>...] [--verbose] [--json] [--global]` |
 
-补充：`status --global [--json]` 会检查全局期望状态与当前机器实际 agent skills 目录是否一致，并显示每个全局 skill 的版本。
+补充：`status --global [--json]` 会检查全局期望状态与当前机器实际 agent skills 目录是否一致。文本输出与项目模式一致，按每个全局 skill 显示一行及版本；不同 agent 的状态不一致时，会在该行下显示 agent 明细。JSON 保留逐 agent 的原始状态项，便于自动化处理。
 
 ### 3.5. 项目工作区-本地仓库交互
 | 命令 | 功能描述 | 语法 |
@@ -614,26 +614,24 @@ skill-hub use git-expert --repo team-skills --dry-run --json --non-interactive
 
 **选项**:
 - `--verbose`: 显示详细差异信息。
-- `--json`: 以机器可读 JSON 输出状态摘要，字段包含 `skill_id`、`status`、`local_version`、`repo_version`、`local_path`、`repo_path`、`source_repository` 等。
-- `--global`: 检查本机全局期望状态与实际 agent skills 目录是否一致；文本表格会显示全局技能版本。
+- `--json`: 以机器可读 JSON 输出状态摘要，字段包含 `scope`、`skill_id`、`status`、`reason`、`legacy_status`、版本、路径与来源仓库等；`legacy_status` 仅用于旧调用方迁移。
+- `--global`: 检查本机全局期望状态与实际 agent skills 目录是否一致；文本表格按 skill 聚合显示版本与 agent，状态不一致时显示 agent 明细。JSON 保留逐 agent 的原始状态项。
 
 **功能描述**:
 
-对比项目本地工作区与技能仓库源文件的差异，显示技能状态。对比范围包括技能目录下全部文件（含 `SKILL.md` 及 `scripts/`、`references/`、`assets/` 等子目录），任一文件内容或清单差异即可能显示为 Modified：
-- `Synced`: 本地与仓库一致
-- `Modified`: 本地有未反馈的修改（含子目录内文件变更）
-- `Outdated`: 仓库版本领先于本地
-- `ModifiedAgainstOutdatedRepo`: 仓库版本领先于本地，且项目工作区副本已基于旧版本发生本地修改；`feedback` 会阻断该状态，需先 `apply --pattern <id>` 刷新并手工迁移必要修改
-- `Missing`: 技能已启用但本地文件缺失
+对比项目本地工作区与技能仓库源文件的差异，显示技能状态。对比范围包括技能目录下全部文件（含 `SKILL.md` 及 `scripts/`、`references/`、`assets/` 等子目录）。项目与全局共用下列规范状态：
+- `synced`: 目标副本与来源一致
+- `modified`: 目标副本被本地修改
+- `outdated`: 来源已更新，目标需要刷新
+- `diverged`: 来源已更新且目标也有修改；`feedback` 会阻断该状态，需先 `apply --pattern <id>` 刷新并手工迁移必要修改
+- `missing`: 已启用但目标副本不存在
+- `conflict`: 存在同名但不可安全接管的目标
+- `orphaned`: 存在 Skill-Hub 托管副本，但状态记录已不存在
+- `unavailable`: 目标环境或来源不可用
 
-使用 `--global` 时，状态语义切换为全局一致性检查：
-- `ok`: `global-state.json`、来源仓库与 agent 全局目录一致
-- `not_applied`: 已全局启用但尚未写入 agent 目录
-- `modified`: agent 目录中的 Skill-Hub 托管副本被手动修改
-- `stale`: 来源仓库内容已变化，agent 目录需要刷新
-- `conflict`: agent 目录存在同名但非 Skill-Hub 托管目录
-- `orphaned`: agent 目录存在 Skill-Hub manifest，但全局状态已不再记录
-- `missing_agent_dir`: agent skills 目录不存在
+全局聚合表格还可能显示 `mixed`，表示同一 skill 在不同 agent 上的状态不同；逐 agent JSON 项始终使用实际规范状态。`legacy_status` 保留旧名称（如 `Synced`、`ok`、`stale`、`error`），仅供迁移期间的兼容处理。
+
+使用 `--global` 时，状态仍按上述规范状态表达：`synced` 表示 `global-state.json`、来源仓库与 agent 目录一致，`missing` 表示尚未写入 agent 目录，`outdated` 表示来源已变化，`unavailable` 表示 agent 目录或来源不可用。其他状态含义不变。
 
 当前实现补充：
 

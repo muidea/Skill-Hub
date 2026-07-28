@@ -22,13 +22,13 @@ import (
 const (
 	ManifestFileName = ".skill-hub-manifest.json"
 
-	StatusOK              = "ok"
-	StatusNotApplied      = "not_applied"
-	StatusModified        = "modified"
-	StatusStale           = "stale"
-	StatusConflict        = "conflict"
-	StatusOrphaned        = "orphaned"
-	StatusMissingAgentDir = "missing_agent_dir"
+	StatusOK              = spec.StatusSynced
+	StatusNotApplied      = spec.StatusMissing
+	StatusModified        = spec.StatusModified
+	StatusStale           = spec.StatusOutdated
+	StatusConflict        = spec.StatusConflict
+	StatusOrphaned        = spec.StatusOrphaned
+	StatusMissingAgentDir = spec.StatusUnavailable
 	StatusRemoved         = "removed"
 	StatusPlanned         = "planned"
 	StatusApplied         = "applied"
@@ -95,6 +95,8 @@ type StatusItem struct {
 	SkillID          string `json:"skill_id"`
 	Agent            string `json:"agent"`
 	Status           string `json:"status"`
+	LegacyStatus     string `json:"legacy_status,omitempty"`
+	Reason           string `json:"reason,omitempty"`
 	Message          string `json:"message,omitempty"`
 	SourceRepository string `json:"source_repository,omitempty"`
 	Version          string `json:"version,omitempty"`
@@ -474,75 +476,95 @@ func (g *Global) inspectDesiredSkill(skillState SkillState, agent AgentInfo) Sta
 
 	srcDir, err := g.sourceSkillDir(skillState.SourceRepository, skillState.SkillID)
 	if err != nil {
-		item.Status = StatusError
-		item.Message = err.Error()
+		setInspectionStatus(&item, spec.StatusUnavailable, "source_unavailable", err.Error())
 		return item
 	}
 	item.SourcePath = srcDir
 	sourceHash, err := hashDirectory(srcDir)
 	if err != nil {
-		item.Status = StatusError
-		item.Message = err.Error()
+		setInspectionStatus(&item, spec.StatusUnavailable, "source_unavailable", err.Error())
 		return item
 	}
 	item.SourceHash = sourceHash
 
 	if !agent.Configured {
-		item.Status = StatusMissingAgentDir
-		item.Message = "agent 全局 skills 目录不存在"
+		setInspectionStatus(&item, StatusMissingAgentDir, "agent_directory_missing", "agent 全局 skills 目录不存在")
 		return item
 	}
 
 	info, err := os.Stat(item.TargetPath)
 	if os.IsNotExist(err) {
-		item.Status = StatusNotApplied
-		item.Message = "目标 agent 目录中未应用该技能"
+		setInspectionStatus(&item, StatusNotApplied, "target_missing", "目标 agent 目录中未应用该技能")
 		return item
 	}
 	if err != nil {
-		item.Status = StatusError
-		item.Message = err.Error()
+		setInspectionStatus(&item, spec.StatusUnavailable, "target_unavailable", err.Error())
 		return item
 	}
 	if !info.IsDir() {
-		item.Status = StatusConflict
-		item.Message = "目标路径已存在但不是目录"
+		setInspectionStatus(&item, StatusConflict, "target_not_directory", "目标路径已存在但不是目录")
 		return item
 	}
 
 	manifest, err := readManifest(filepath.Join(item.TargetPath, ManifestFileName))
 	if err != nil {
-		item.Status = StatusConflict
-		item.Message = "目标目录存在但不是 Skill-Hub 托管目录"
+		setInspectionStatus(&item, StatusConflict, "target_unmanaged", "目标目录存在但不是 Skill-Hub 托管目录")
 		return item
 	}
 	if !isManagedManifest(manifest, skillState.SkillID, agent.Name) {
-		item.Status = StatusConflict
-		item.Message = "manifest 不属于当前全局技能目标"
+		setInspectionStatus(&item, StatusConflict, "manifest_mismatch", "manifest 不属于当前全局技能目标")
 		return item
 	}
 	item.AppliedHash = manifest.AppliedHash
 
 	actualHash, err := hashDirectory(item.TargetPath)
 	if err != nil {
-		item.Status = StatusError
-		item.Message = err.Error()
+		setInspectionStatus(&item, spec.StatusUnavailable, "target_unreadable", err.Error())
 		return item
 	}
 	item.ActualHash = actualHash
 
 	switch {
 	case actualHash != manifest.AppliedHash && actualHash != sourceHash:
-		item.Status = StatusModified
-		item.Message = "目标目录内容与 manifest 不一致"
+		setInspectionStatus(&item, StatusModified, "target_modified", "目标目录内容与 manifest 不一致")
 	case actualHash != sourceHash:
-		item.Status = StatusStale
-		item.Message = "来源仓库内容已变化，目标目录需要刷新"
+		setInspectionStatus(&item, StatusStale, "source_newer", "来源仓库内容已变化，目标目录需要刷新")
 	default:
-		item.Status = StatusOK
+		setInspectionStatus(&item, StatusOK, "source_and_target_match", "")
 	}
 
 	return item
+}
+
+func setInspectionStatus(item *StatusItem, status, reason, message string) {
+	item.Status = spec.NormalizeSkillStatus(status)
+	item.LegacyStatus = legacyGlobalStatus(item.Status)
+	if item.Status == spec.StatusUnavailable && reason == "agent_directory_missing" {
+		item.LegacyStatus = "missing_agent_dir"
+	}
+	item.Reason = reason
+	item.Message = message
+}
+
+func legacyGlobalStatus(status string) string {
+	switch spec.NormalizeSkillStatus(status) {
+	case spec.StatusSynced:
+		return "ok"
+	case spec.StatusMissing:
+		return "not_applied"
+	case spec.StatusModified:
+		return "modified"
+	case spec.StatusOutdated:
+		return "stale"
+	case spec.StatusConflict:
+		return "conflict"
+	case spec.StatusOrphaned:
+		return "orphaned"
+	case spec.StatusUnavailable:
+		return "error"
+	default:
+		return ""
+	}
 }
 
 func (g *Global) applyToAgent(skillState SkillState, agent AgentInfo, srcDir, sourceHash string, dryRun, force bool, appliedAt string) StatusItem {
@@ -879,6 +901,8 @@ func scanOrphanedManagedSkills(state *State, agents []AgentInfo) ([]StatusItem, 
 				SkillID:          manifest.SkillID,
 				Agent:            agent.Name,
 				Status:           StatusOrphaned,
+				LegacyStatus:     "orphaned",
+				Reason:           "state_missing",
 				Message:          "agent 目录存在 Skill-Hub manifest，但全局状态不再记录",
 				SourceRepository: manifest.SourceRepository,
 				SourceHash:       manifest.SourceHash,
