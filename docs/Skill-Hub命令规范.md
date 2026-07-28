@@ -125,7 +125,8 @@ skill-hubd --host 127.0.0.1 --port 6600 --secret-key write-secret
 - `--host` 默认 `127.0.0.1`，`--port` 默认 `5525`。
 - `--secret-key` 只保护 `POST /api/v1/skill-repository/push`；未配置时该 API 返回 `READ_ONLY`，拉取、同步和项目本地操作不受影响。
 - loopback 绑定会校验 Host、浏览器来源和安全响应头；CLI bridge 通过 `SKILL_HUB_SERVICE_URL` 与可选的 `SKILL_HUB_SERVICE_SECRET_KEY` 调用 daemon。
-- daemon 由系统服务管理器负责后台启动、停止与重启；不再维护 `~/.skill-hub/services.json` 或 `serve` 子命令。
+- Linux 可使用 `skill-hubd service install|start|stop|restart|status|uninstall` 管理当前用户的 systemd 单元；`install` 默认启用并启动服务，支持 `--host`、`--port`、`--secret-key` 和 `--no-start`，`status --json` 适合自动化检查。
+- macOS 与 Windows 当前由对应平台的服务管理器负责后台启动、停止与重启；不再维护 `~/.skill-hub/services.json` 或 `serve` 子命令。
 
 ### 4.1 init - 初始化本地仓库
 

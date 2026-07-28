@@ -37,7 +37,6 @@ GITHUB_API="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
 
 # 默认版本（最新）
 VERSION="${1:-latest}"
-UPDATED_SERVE_COUNT=0
 INSTALLED_AGENT_SKILLS_COUNT=0
 AGENT_SKILLS_TARGET=""
 
@@ -428,11 +427,58 @@ main() {
     
     # 创建目录（如果不存在）
     mkdir -p "$install_dir"
-    
-    # 先复制到同目录临时文件，再通过 rename 覆盖目标文件，避免正在运行的旧二进制导致 Text file busy。
-    rm -f "$install_tmp"
-	rm -f "$daemon_install_tmp"
-    if cp "$ACTUAL_BINARY" "$install_tmp" && chmod 755 "$install_tmp" && cp "$DAEMON_BINARY" "$daemon_install_tmp" && chmod 755 "$daemon_install_tmp" && mv -f "$install_tmp" "$install_path" && mv -f "$daemon_install_tmp" "$daemon_install_path"; then
+
+    # 先复制到同目录临时文件，再以可回滚事务替换两个二进制。CLI 与 daemon
+    # 必须保持同版本，第二个 replace 失败时恢复第一个，避免留下半升级状态。
+    replace_binary_pair() {
+        local cli_backup="$install_dir/.${install_name}.backup.$$"
+        local daemon_backup="$install_dir/.${daemon_install_name}.backup.$$"
+        local cli_backed_up=false
+        local daemon_backed_up=false
+
+        rollback_binary_pair() {
+            rm -f "$install_path" "$daemon_install_path"
+            if [ "$daemon_backed_up" = "true" ]; then
+                mv -f "$daemon_backup" "$daemon_install_path" || true
+            fi
+            if [ "$cli_backed_up" = "true" ]; then
+                mv -f "$cli_backup" "$install_path" || true
+            fi
+            rm -f "$install_tmp" "$daemon_install_tmp"
+        }
+
+        rm -f "$install_tmp" "$daemon_install_tmp" "$cli_backup" "$daemon_backup"
+        if ! cp "$ACTUAL_BINARY" "$install_tmp" || ! chmod 755 "$install_tmp" || ! cp "$DAEMON_BINARY" "$daemon_install_tmp" || ! chmod 755 "$daemon_install_tmp"; then
+            rm -f "$install_tmp" "$daemon_install_tmp"
+            return 1
+        fi
+        if [ -e "$install_path" ]; then
+            if ! mv -f "$install_path" "$cli_backup"; then
+                rm -f "$install_tmp" "$daemon_install_tmp"
+                return 1
+            fi
+            cli_backed_up=true
+        fi
+        if ! mv -f "$install_tmp" "$install_path"; then
+            rollback_binary_pair
+            return 1
+        fi
+        if [ -e "$daemon_install_path" ]; then
+            if ! mv -f "$daemon_install_path" "$daemon_backup"; then
+                rollback_binary_pair
+                return 1
+            fi
+            daemon_backed_up=true
+        fi
+        if ! mv -f "$daemon_install_tmp" "$daemon_install_path"; then
+            rollback_binary_pair
+            return 1
+        fi
+        rm -f "$cli_backup" "$daemon_backup"
+        return 0
+    }
+
+    if replace_binary_pair; then
         echo "✓ 安装成功！"
         
         # 安装完成信息提示
@@ -599,13 +645,13 @@ main() {
         install_agent_skills "agent-skills"
         
     else
-        rm -f "$install_tmp"
         echo "✗ 安装失败"
         echo "文件保存在: $TEMP_DIR"
         echo "目标位置: $install_path"
 		echo "如果旧版 skill-hub 或 skill-hubd 进程正在运行，请先停止后重试。"
         echo "您也可以手动执行以下命令完成覆盖安装:"
-        echo "  cp \"$TEMP_DIR/$ACTUAL_BINARY\" \"$install_tmp\" && chmod 755 \"$install_tmp\" && mv -f \"$install_tmp\" \"$install_path\""
+        echo "  cp \"$TEMP_DIR/$ACTUAL_BINARY\" \"$install_tmp\" && cp \"$TEMP_DIR/$DAEMON_BINARY\" \"$daemon_install_tmp\""
+        echo "  chmod 755 \"$install_tmp\" \"$daemon_install_tmp\" && mv -f \"$install_tmp\" \"$install_path\" && mv -f \"$daemon_install_tmp\" \"$daemon_install_path\""
         exit 1
     fi
     
@@ -632,6 +678,10 @@ main() {
     
     if [[ ! -x "$install_path" ]]; then
         echo "✗ 安装验证失败: $install_path 不存在或不可执行"
+        exit 1
+    fi
+    if [[ ! -x "$daemon_install_path" ]]; then
+        echo "✗ 安装验证失败: $daemon_install_path 不存在或不可执行"
         exit 1
     fi
 
@@ -676,6 +726,23 @@ main() {
         echo "期望版本: $expected_version"
         echo "实际版本: ${installed_version:-无法识别}"
         echo "验证路径: $install_path"
+        exit 1
+    fi
+
+    local daemon_version_output
+    if ! daemon_version_output=$("$daemon_install_path" --version 2>&1); then
+        echo "$daemon_version_output"
+        echo "✗ 安装验证失败: 无法执行 $daemon_install_path --version"
+        exit 1
+    fi
+    local daemon_installed_version
+    daemon_installed_version=$(printf '%s\n' "$daemon_version_output" | sed -n 's/^skill-hubd version \([^ ]*\).*/\1/p' | head -n 1)
+    if [[ "$daemon_installed_version" != "$expected_version" ]]; then
+        echo ""
+        echo "✗ 安装验证失败: skill-hubd 版本不匹配"
+        echo "期望版本: $expected_version"
+        echo "实际版本: ${daemon_installed_version:-无法识别}"
+        echo "验证路径: $daemon_install_path"
         exit 1
     fi
 

@@ -109,6 +109,20 @@ skill-hub upgrade --yes
 
 `upgrade` 会下载当前系统架构对应的 `.tar.gz` 发布包，校验配套 `.sha256`，预执行新版 `skill-hub` 与 `skill-hubd` 的版本检查，再以可回滚事务替换同目录的两个二进制。升级完成后默认仅同步 release 内置 `skill-hub-*` workflow skills 到工具无关目录，不会覆盖由 `apply --global` 托管的全局 skills 目录。运行中的 daemon 应由系统服务管理器重启。Linux 与 macOS 支持自动替换；Windows 当前请继续使用安装脚本或手动下载 Release 包。
 
+#### 管理 skill-hubd 服务（Linux）
+
+`skill-hubd` 可创建当前用户的 systemd 服务单元，无需 root 权限：
+
+```bash
+skill-hubd service install --host 127.0.0.1 --port 5525
+skill-hubd service status
+skill-hubd service restart
+skill-hubd service stop
+skill-hubd service uninstall
+```
+
+`install` 默认启用并启动服务；使用 `--no-start` 只安装并启用。需要保护远端推送时可在安装时提供 `--secret-key`，该值会写入权限为 `0600` 的 systemd 用户单元。macOS 与 Windows 当前请使用对应平台的服务管理器。
+
 ### 3. 从源码编译
 
 如果您需要自定义构建、参与开发或使用最新代码，可以从源码编译。

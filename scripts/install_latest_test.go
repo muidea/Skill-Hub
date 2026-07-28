@@ -22,6 +22,11 @@ func TestInstallLatestHandlesRunningDaemonBinary(t *testing.T) {
 	if !strings.Contains(installBlock, "mv -f \"$install_tmp\" \"$install_path\"") {
 		t.Fatalf("install should atomically replace the target binary with mv -f")
 	}
+	for _, expected := range []string{"replace_binary_pair()", "rollback_binary_pair()", "daemon_backup", "cli_backup"} {
+		if !strings.Contains(installBlock, expected) {
+			t.Fatalf("install should replace the binary pair transactionally: missing %q", expected)
+		}
+	}
 	if !strings.Contains(installBlock, "exit 1") {
 		t.Fatalf("install failure should stop instead of falling through to verification")
 	}
@@ -40,6 +45,11 @@ func TestInstallLatestHandlesRunningDaemonBinary(t *testing.T) {
 	}
 	if !strings.Contains(verifyBlock, "installed_version") || !strings.Contains(verifyBlock, "expected_version") {
 		t.Fatalf("verification should compare installed and expected versions")
+	}
+	for _, expected := range []string{"daemon_version_output", "daemon_installed_version", "\"$daemon_install_path\" --version"} {
+		if !strings.Contains(verifyBlock, expected) {
+			t.Fatalf("verification should validate installed daemon version: missing %q", expected)
+		}
 	}
 }
 

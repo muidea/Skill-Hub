@@ -16,6 +16,19 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "service" {
+		if err := skillhubd.RunServiceCommand(context.Background(), os.Args[2:], os.Stdout, os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "skill-hubd service: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, "用法: skill-hubd [--host HOST] [--port PORT] [--secret-key KEY]")
+		fmt.Fprintln(os.Stderr, "      skill-hubd service <install|start|stop|restart|status|uninstall> [flags]")
+		flag.PrintDefaults()
+	}
 	host := flag.String("host", "127.0.0.1", "监听地址")
 	port := flag.Int("port", 5525, "监听端口")
 	secretKey := flag.String("secret-key", "", "远端推送密钥，未配置时禁止远端推送")

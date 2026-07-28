@@ -134,6 +134,16 @@ skill-hub lint . --paths --project-root "$PWD" --json
 skill-hubd
 ```
 
+在 Linux 上将 daemon 注册为当前用户的 systemd 服务：
+
+```bash
+skill-hubd service install --port 5525
+skill-hubd service status
+skill-hubd service restart
+```
+
+`skill-hubd service` 管理的是 systemd 用户单元；不再使用已移除的 `skill-hub serve` 或 `~/.skill-hub/services.json`。
+
 ## 文档
 
 - [安装和使用指南](INSTALLATION.md)
