@@ -75,9 +75,12 @@ func (c *Client) RemoveRepo(ctx context.Context, name string) error {
 	return err
 }
 
-func (c *Client) SyncRepo(ctx context.Context, name string) error {
-	_, err := post[map[string]string](ctx, c, "/api/v1/repos/"+url.PathEscape(name)+"/sync", nil)
-	return err
+func (c *Client) SyncRepo(ctx context.Context, name string) (*httpapibiz.RepoSyncData, error) {
+	data, err := post[httpapibiz.RepoSyncData](ctx, c, "/api/v1/repos/"+url.PathEscape(name)+"/sync", nil)
+	if err != nil {
+		return nil, err
+	}
+	return &data, nil
 }
 
 func (c *Client) EnableRepo(ctx context.Context, name string) error {

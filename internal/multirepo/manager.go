@@ -190,37 +190,40 @@ func (m *Manager) RemoveRepository(name string) error {
 }
 
 // SyncRepository 同步仓库
-func (m *Manager) SyncRepository(name string) error {
+func (m *Manager) SyncRepository(name string) (*git.RepositorySyncResult, error) {
 	if m.config.MultiRepo == nil {
-		return errors.NewWithCode("SyncRepository", errors.ErrConfigInvalid, "多仓库配置未初始化")
+		return nil, errors.NewWithCode("SyncRepository", errors.ErrConfigInvalid, "多仓库配置未初始化")
 	}
 	if _, exists := m.config.MultiRepo.Repositories[name]; !exists {
-		return errors.NewWithCodef("SyncRepository", errors.ErrConfigInvalid, "仓库 '%s' 不存在", name)
+		return nil, errors.NewWithCodef("SyncRepository", errors.ErrConfigInvalid, "仓库 '%s' 不存在", name)
 	}
 
 	repoDir, err := config.GetRepositoryPath(name)
 	if err != nil {
-		return errors.Wrap(err, "SyncRepository: 获取仓库路径失败")
+		return nil, errors.Wrap(err, "SyncRepository: 获取仓库路径失败")
 	}
 
 	// 检查是否为Git仓库
 	if !git.IsGitRepo(repoDir) {
-		return errors.NewWithCodef("SyncRepository", errors.ErrGitOperation, "目录 '%s' 不是Git仓库", repoDir)
+		return nil, errors.NewWithCodef("SyncRepository", errors.ErrGitOperation, "目录 '%s' 不是Git仓库", repoDir)
 	}
 
-	// 执行git pull
-	if err := git.Pull(repoDir); err != nil {
-		return errors.WrapWithCode(err, "SyncRepository", errors.ErrGitOperation, "同步仓库失败")
+	result, err := git.Sync(repoDir)
+	if err != nil {
+		return nil, errors.WrapWithCode(err, "SyncRepository", errors.ErrGitOperation, "同步仓库失败")
+	}
+	if result.Status == "divergent" || result.Status == "blocked_dirty" {
+		return result, nil
 	}
 
 	if err := m.RebuildRepositoryIndex(name); err != nil {
-		return errors.Wrap(err, "SyncRepository: 重建仓库索引失败")
+		return nil, errors.Wrap(err, "SyncRepository: 重建仓库索引失败")
 	}
 
 	// 更新最后同步时间
 	// 这里需要保存配置，暂时先不实现
 
-	return nil
+	return result, nil
 }
 
 // EnableRepository 启用仓库

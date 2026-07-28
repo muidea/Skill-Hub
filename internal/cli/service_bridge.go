@@ -19,7 +19,7 @@ type serviceBridgeClient interface {
 	ListRepos(ctx context.Context) (*httpapibiz.RepoListData, error)
 	AddRepo(ctx context.Context, repo config.RepositoryConfig) error
 	RemoveRepo(ctx context.Context, name string) error
-	SyncRepo(ctx context.Context, name string) error
+	SyncRepo(ctx context.Context, name string) (*httpapibiz.RepoSyncData, error)
 	EnableRepo(ctx context.Context, name string) error
 	DisableRepo(ctx context.Context, name string) error
 	SetDefaultRepo(ctx context.Context, name string) error
@@ -71,7 +71,7 @@ func (h *hubBridgeClient) RemoveRepo(ctx context.Context, name string) error {
 	return h.client.Service().RemoveRepo(ctx, name)
 }
 
-func (h *hubBridgeClient) SyncRepo(ctx context.Context, name string) error {
+func (h *hubBridgeClient) SyncRepo(ctx context.Context, name string) (*httpapibiz.RepoSyncData, error) {
 	return h.client.Service().SyncRepo(ctx, name)
 }
 

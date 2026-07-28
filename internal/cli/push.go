@@ -66,15 +66,22 @@ func runPush() error {
 		return errors.Wrap(err, "获取仓库状态失败")
 	}
 
-	// 检查是否有未提交的更改
-	changedLines := pushChangedLines(status)
-	if len(changedLines) == 0 {
+	state, err := pushRepositoryState(client, useService, status)
+	if err != nil {
+		return errors.Wrap(err, "检查待推送提交失败")
+	}
+	if !state.HasPendingPush {
 		fmt.Println("没有要推送的更改")
 		return nil
 	}
+	changedLines := state.ChangedLines
 
 	// 显示将要推送的更改
-	fmt.Println("检测到以下未提交的更改:")
+	if len(changedLines) > 0 {
+		fmt.Println("检测到以下未提交的更改:")
+	} else {
+		fmt.Printf("检测到 %d 个本地提交尚未推送:\n", state.Ahead)
+	}
 	fmt.Println(strings.Repeat("-", 50))
 
 	for _, line := range changedLines {
@@ -120,13 +127,16 @@ func runPush() error {
 }
 
 type pushSummary struct {
-	DryRun       bool     `json:"dry_run"`
-	Force        bool     `json:"force"`
-	Message      string   `json:"message,omitempty"`
-	HasChanges   bool     `json:"has_changes"`
-	ChangedFiles []string `json:"changed_files"`
-	Status       string   `json:"status"`
-	Error        string   `json:"error,omitempty"`
+	DryRun         bool     `json:"dry_run"`
+	Force          bool     `json:"force"`
+	Message        string   `json:"message,omitempty"`
+	HasChanges     bool     `json:"has_changes"`
+	HasPendingPush bool     `json:"has_pending_push"`
+	ChangedFiles   []string `json:"changed_files"`
+	Ahead          int      `json:"ahead"`
+	Behind         int      `json:"behind"`
+	Status         string   `json:"status"`
+	Error          string   `json:"error,omitempty"`
 }
 
 func runPushStructured() (*pushSummary, error) {
@@ -154,14 +164,22 @@ func runPushStructured() (*pushSummary, error) {
 		return summary, errors.Wrap(err, "获取仓库状态失败")
 	}
 
-	changedLines := pushChangedLines(status)
-	summary.HasChanges = len(changedLines) > 0
-	summary.ChangedFiles = pushChangedFiles(changedLines)
+	state, err := pushRepositoryState(client, useService, status)
+	if err != nil {
+		summary.Status = "failed"
+		summary.Error = err.Error()
+		return summary, errors.Wrap(err, "检查待推送提交失败")
+	}
+	summary.HasChanges = len(state.ChangedLines) > 0
+	summary.HasPendingPush = state.HasPendingPush
+	summary.ChangedFiles = pushChangedFiles(state.ChangedLines)
+	summary.Ahead = state.Ahead
+	summary.Behind = state.Behind
 	if message == "" {
 		message = gitpkg.SuggestedCommitMessage(summary.ChangedFiles)
 	}
 	summary.Message = message
-	if !summary.HasChanges {
+	if !summary.HasPendingPush {
 		summary.Status = "no_changes"
 		return summary, nil
 	}
@@ -202,6 +220,44 @@ func pushRepositoryStatus(client serviceBridgeClient, useService bool) (string, 
 		return data.Status, nil
 	}
 	return skillRepositoryStatus()
+}
+
+type repositoryPushState struct {
+	ChangedLines   []string
+	Ahead          int
+	Behind         int
+	HasPendingPush bool
+}
+
+func pushRepositoryState(client serviceBridgeClient, useService bool, status string) (*repositoryPushState, error) {
+	state := &repositoryPushState{ChangedLines: pushChangedLines(status)}
+	var (
+		updates *httpapibiz.SkillRepositoryCheckData
+		err     error
+	)
+	if useService {
+		updates, err = client.CheckSkillRepositoryUpdates(context.Background())
+	} else {
+		localUpdates, checkErr := checkSkillRepositoryUpdates()
+		if checkErr != nil {
+			return nil, checkErr
+		}
+		if localUpdates != nil {
+			updates = &httpapibiz.SkillRepositoryCheckData{
+				Ahead:  localUpdates.Ahead,
+				Behind: localUpdates.Behind,
+			}
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if updates != nil {
+		state.Ahead = updates.Ahead
+		state.Behind = updates.Behind
+	}
+	state.HasPendingPush = len(state.ChangedLines) > 0 || state.Ahead > 0
+	return state, nil
 }
 
 func pushRepositoryChanges(client serviceBridgeClient, useService bool, message string) error {

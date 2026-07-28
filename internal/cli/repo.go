@@ -274,6 +274,9 @@ type repoSyncItem struct {
 	Name    string `json:"name"`
 	Status  string `json:"status"`
 	Enabled bool   `json:"enabled"`
+	Message string `json:"message,omitempty"`
+	Ahead   int    `json:"ahead"`
+	Behind  int    `json:"behind"`
 	Error   string `json:"error,omitempty"`
 }
 
@@ -303,15 +306,18 @@ func runRepoSync(args []string, syncAll bool, jsonOutput bool) error {
 		name := args[0]
 		fmt.Printf("正在同步仓库 '%s'...\n", name)
 
-		if client, ok := hubClientIfAvailable(); ok {
-			if err := client.SyncRepo(context.Background(), name); err != nil {
-				return errors.Wrapf(err, "通过服务同步仓库 '%s' 失败", name)
-			}
-		} else if err := syncRepository(name); err != nil {
+		result, err := syncConfiguredRepository(name)
+		if err != nil {
 			return errors.Wrapf(err, "同步仓库 '%s' 失败", name)
 		}
+		if isBlockedRepoSync(result) {
+			return errors.NewWithCodef("runRepoSync", errors.ErrGitOperation, "仓库 '%s' 同步未执行: %s", name, result.Message)
+		}
 
-		fmt.Printf("✅ 仓库 '%s' 同步完成\n", name)
+		fmt.Printf("✅ 仓库 '%s' 同步完成 (%s)\n", name, result.Status)
+		if result.Message != "" {
+			fmt.Printf("   %s\n", result.Message)
+		}
 	} else {
 		// 同步所有仓库
 		var repos []config.RepositoryConfig
@@ -346,17 +352,18 @@ func runRepoSync(args []string, syncAll bool, jsonOutput bool) error {
 			}
 
 			fmt.Printf("\n同步仓库: %s\n", repo.Name)
-			var err error
-			if client, ok := hubClientIfAvailable(); ok {
-				err = client.SyncRepo(context.Background(), repo.Name)
-			} else {
-				err = syncRepository(repo.Name)
-			}
+			result, err := syncConfiguredRepository(repo.Name)
 			if err != nil {
 				fmt.Printf("❌ 同步失败: %v\n", err)
 				failedRepos = append(failedRepos, repo.Name)
+			} else if isBlockedRepoSync(result) {
+				fmt.Printf("⚠️  同步未执行: %s\n", result.Message)
+				failedRepos = append(failedRepos, repo.Name)
 			} else {
 				successCount++
+				if result.Message != "" {
+					fmt.Printf("   %s\n", result.Message)
+				}
 			}
 		}
 
@@ -402,14 +409,7 @@ func runRepoSyncStructured(args []string, syncAll bool) (*repoSyncSummary, error
 	if len(args) > 0 {
 		name := args[0]
 		item := repoSyncItem{Name: name, Enabled: true}
-		var err error
-		if useService {
-			err = client.SyncRepo(context.Background(), name)
-		} else {
-			err = runSilencingStdout(func() error {
-				return syncRepository(name)
-			})
-		}
+		result, err := syncConfiguredRepositoryWithClient(client, useService, name, true)
 		if err != nil {
 			item.Status = "failed"
 			item.Error = err.Error()
@@ -418,7 +418,14 @@ func runRepoSyncStructured(args []string, syncAll bool) (*repoSyncSummary, error
 			summary.Total = 1
 			return summary, err
 		}
-		item.Status = "synced"
+		applyRepoSyncResult(&item, result)
+		if isBlockedRepoSync(result) {
+			item.Error = result.Message
+			summary.Failed = 1
+			summary.Total = 1
+			summary.Items = append(summary.Items, item)
+			return summary, errors.NewWithCodef("runRepoSyncStructured", errors.ErrGitOperation, "%s", result.Message)
+		}
 		summary.Synced = 1
 		summary.Total = 1
 		summary.Items = append(summary.Items, item)
@@ -438,25 +445,58 @@ func runRepoSyncStructured(args []string, syncAll bool) (*repoSyncSummary, error
 			summary.Items = append(summary.Items, item)
 			continue
 		}
-		var syncErr error
-		if useService {
-			syncErr = client.SyncRepo(context.Background(), repo.Name)
-		} else {
-			syncErr = runSilencingStdout(func() error {
-				return syncRepository(repo.Name)
-			})
-		}
+		result, syncErr := syncConfiguredRepositoryWithClient(client, useService, repo.Name, true)
 		if syncErr != nil {
 			item.Status = "failed"
 			item.Error = syncErr.Error()
 			summary.Failed++
+		} else if isBlockedRepoSync(result) {
+			applyRepoSyncResult(&item, result)
+			item.Error = result.Message
+			summary.Failed++
 		} else {
-			item.Status = "synced"
+			applyRepoSyncResult(&item, result)
 			summary.Synced++
 		}
 		summary.Items = append(summary.Items, item)
 	}
 	return summary, nil
+}
+
+func syncConfiguredRepository(name string) (*httpapibiz.RepoSyncData, error) {
+	client, useService := hubClientIfAvailable()
+	return syncConfiguredRepositoryWithClient(client, useService, name, false)
+}
+
+func syncConfiguredRepositoryWithClient(client serviceBridgeClient, useService bool, name string, quiet bool) (*httpapibiz.RepoSyncData, error) {
+	if useService {
+		return client.SyncRepo(context.Background(), name)
+	}
+	if !quiet {
+		return syncRepository(name)
+	}
+	var result *httpapibiz.RepoSyncData
+	err := runSilencingStdout(func() error {
+		var syncErr error
+		result, syncErr = syncRepository(name)
+		return syncErr
+	})
+	return result, err
+}
+
+func applyRepoSyncResult(item *repoSyncItem, result *httpapibiz.RepoSyncData) {
+	if result == nil {
+		item.Status = "synced"
+		return
+	}
+	item.Status = result.Status
+	item.Message = result.Message
+	item.Ahead = result.Ahead
+	item.Behind = result.Behind
+}
+
+func isBlockedRepoSync(result *httpapibiz.RepoSyncData) bool {
+	return result != nil && (result.Status == "divergent" || result.Status == "blocked_dirty")
 }
 
 func reposForSync(client serviceBridgeClient, useService bool) ([]config.RepositoryConfig, error) {

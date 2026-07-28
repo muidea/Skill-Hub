@@ -124,7 +124,7 @@ func (r *Runtime) RemoveRepository(name string) error {
 	return r.repositorySvc.Service().RemoveRepository(name)
 }
 
-func (r *Runtime) SyncRepository(name string) error {
+func (r *Runtime) SyncRepository(name string) (*gitpkg.RepositorySyncResult, error) {
 	return r.repositorySvc.Service().SyncRepository(name)
 }
 

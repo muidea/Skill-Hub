@@ -161,25 +161,42 @@ func (h *HTTPAPI) handleRepoActions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var err error
 	switch parts[1] {
 	case "sync":
-		err = h.runtimeSvc.Service().SyncRepository(name)
+		result, err := h.runtimeSvc.Service().SyncRepository(name)
+		if err != nil {
+			writeWrappedError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, httpapibiz.Response[httpapibiz.RepoSyncData]{
+			Code: httpapibiz.CodeOK,
+			Data: httpapibiz.RepoSyncData{
+				Status:  result.Status,
+				Message: result.Message,
+				Ahead:   result.Ahead,
+				Behind:  result.Behind,
+			},
+		})
+		return
 	case "enable":
-		err = h.runtimeSvc.Service().EnableRepository(name)
+		if err := h.runtimeSvc.Service().EnableRepository(name); err != nil {
+			writeWrappedError(w, err)
+			return
+		}
 	case "disable":
-		err = h.runtimeSvc.Service().DisableRepository(name)
+		if err := h.runtimeSvc.Service().DisableRepository(name); err != nil {
+			writeWrappedError(w, err)
+			return
+		}
 	case "set-default":
-		err = h.runtimeSvc.Service().SetDefaultRepository(name)
+		if err := h.runtimeSvc.Service().SetDefaultRepository(name); err != nil {
+			writeWrappedError(w, err)
+			return
+		}
 	default:
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "接口不存在")
 		return
 	}
-	if err != nil {
-		writeWrappedError(w, err)
-		return
-	}
-
 	writeJSON(w, http.StatusOK, httpapibiz.Response[map[string]string]{Code: httpapibiz.CodeOK, Data: map[string]string{"status": "ok"}})
 }
 
@@ -285,7 +302,7 @@ func (h *HTTPAPI) handlePushSkillRepository(w http.ResponseWriter, r *http.Reque
 		writeWrappedError(w, err)
 		return
 	}
-	if !preview.HasChanges {
+	if !preview.HasPendingPush {
 		writeError(w, http.StatusBadRequest, "INVALID_INPUT", "没有要推送的更改")
 		return
 	}
@@ -312,12 +329,23 @@ func (h *HTTPAPI) pushSkillRepositoryPreview() (httpapibiz.PushSkillRepositoryPr
 	if err != nil {
 		return httpapibiz.PushSkillRepositoryPreviewData{}, err
 	}
+	updates, err := h.runtimeSvc.Service().CheckSkillRepositoryUpdates()
+	if err != nil {
+		return httpapibiz.PushSkillRepositoryPreviewData{}, err
+	}
 	changedFiles := skillRepositoryChangedFiles(status)
 	preview := httpapibiz.PushSkillRepositoryPreviewData{
 		HasChanges:       len(changedFiles) > 0,
+		HasPendingPush:   len(changedFiles) > 0,
 		ChangedFiles:     changedFiles,
 		SuggestedMessage: gitpkg.SuggestedCommitMessage(changedFiles),
 		RawStatus:        status,
+	}
+	if updates != nil {
+		preview.RemoteStatus = updates.Status
+		preview.Ahead = updates.Ahead
+		preview.Behind = updates.Behind
+		preview.HasPendingPush = preview.HasPendingPush || updates.Ahead > 0
 	}
 	if defaultRepo, err := h.runtimeSvc.Service().DefaultRepository(); err == nil && defaultRepo != nil {
 		preview.DefaultRepo = defaultRepo.Name

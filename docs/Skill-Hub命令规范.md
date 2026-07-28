@@ -854,7 +854,7 @@ skill-hub pull --check --json
 
 **功能描述**:
 
-自动检测并提交默认仓库中的未提交更改，然后推送到对应远程仓库。此命令用于完成 `feedback -> push` 的归档闭环。
+自动检测默认仓库中的未提交更改或已提交但尚未推送的本地提交，然后推送到对应远程仓库。此命令用于完成 `feedback -> push` 的归档闭环。
 
 **多仓库说明**：默认推送到默认仓库（归档仓库）。可使用 `skill-hub repo default` 命令设置默认仓库。
 
@@ -862,16 +862,16 @@ skill-hub pull --check --json
 
 服务 API 中默认仓库推送为受保护写操作：
 
-- `GET /api/v1/skill-repository/push-preview` 返回默认仓库、远端 URL、待推送文件列表、建议提交消息和原始状态。
+- `GET /api/v1/skill-repository/push-preview` 返回默认仓库、远端 URL、待推送文件列表、建议提交消息、原始状态和 `ahead` / `behind` 计数；`has_pending_push` 同时覆盖未提交更改和已提交待推送内容。
 - `POST /api/v1/skill-repository/push` 必须携带 `confirm: true`。
 - 请求可携带 `expected_changed_files`；服务端执行前会重新检查默认仓库状态，若文件列表已变化则拒绝推送。
 - 无待推送变更时服务端拒绝推送。
 - 未配置 `serve --secret-key` 时该推送 API 返回 `READ_ONLY`；仓库拉取/同步类 API 不受该密钥限制。
 
 **关键行为**:
-1. 检查默认仓库是否有未提交的更改（Modified、Untracked、Deleted文件）
-2. 如有更改，自动提交（优先使用指定消息；未指定时根据变更的 skill ID 自动生成消息）
-3. 将提交推送到远程仓库
+1. 检查默认仓库是否有未提交的更改（Modified、Untracked、Deleted 文件）或本地领先远端的提交
+2. 如有未提交更改，自动提交（优先使用指定消息；未指定时根据变更的 skill ID 自动生成消息）
+3. 将已有的本地提交推送到远程仓库
 4. 如无更改可推送，提示"没有要推送的更改"
 
 **多仓库注意**: 此命令仅操作默认仓库（归档仓库）到远程仓库的同步。如需操作其他仓库，请使用 `skill-hub git` 命令。
@@ -1246,8 +1246,8 @@ skill-hub repo default main
 - `--json`: 输出机器可读同步摘要，包含 `total`、`synced`、`skipped`、`failed` 和每个仓库的同步状态。
 
 **功能描述**:
-同步指定仓库或所有启用的仓库。对于远程仓库，会执行 `git pull` 获取最新内容。
-同步后会自动刷新技能索引。
+同步指定仓库或所有启用的仓库。对于远程仓库，会先 fetch 并检查分支关系，再仅以 fast-forward 方式执行 `git pull` 获取最新内容；该命令绝不推送本地提交，也不自动创建 merge commit。
+同步后会自动刷新技能索引。若本地仅领先远端，则返回 `local_ahead` 并保留待推送提交；若本地与远端分叉，返回 `divergent`；若远端有更新但工作区存在未提交更改，返回 `blocked_dirty`，要求先提交或暂存。
 
 **示例**:
 ```bash

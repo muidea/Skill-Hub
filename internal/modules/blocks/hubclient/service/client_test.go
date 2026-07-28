@@ -367,9 +367,9 @@ func TestClientSendsSecretKeyHeader(t *testing.T) {
 				t.Fatalf("expected secret key header, got %q", got)
 			}
 			seen[req.URL.Path] = true
-			return jsonResponse(http.StatusOK, httpapibiz.Response[map[string]string]{
+			return jsonResponse(http.StatusOK, httpapibiz.Response[httpapibiz.RepoSyncData]{
 				Code: httpapibiz.CodeOK,
-				Data: map[string]string{"ok": "true"},
+				Data: httpapibiz.RepoSyncData{Status: "synced"},
 			}), nil
 		}),
 	}
@@ -378,7 +378,7 @@ func TestClientSendsSecretKeyHeader(t *testing.T) {
 	if !client.Available(ctx) {
 		t.Fatal("expected client to report available")
 	}
-	if err := client.SyncRepo(ctx, "main"); err != nil {
+	if _, err := client.SyncRepo(ctx, "main"); err != nil {
 		t.Fatalf("SyncRepo returned error: %v", err)
 	}
 	if !seen["/api/v1/health"] || !seen["/api/v1/repos/main/sync"] {
@@ -422,7 +422,7 @@ func TestClientPreservesPayloadErrorCode(t *testing.T) {
 		}),
 	}
 
-	err := client.SyncRepo(context.Background(), "main")
+	_, err := client.SyncRepo(context.Background(), "main")
 	if err == nil {
 		t.Fatal("expected SyncRepo to return error")
 	}

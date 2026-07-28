@@ -221,6 +221,38 @@ func TestRepositoryPushUsesSystemGit(t *testing.T) {
 	runGitCommand(t, remoteDir, "rev-parse", "--verify", "refs/heads/main")
 }
 
+func TestSkillRepositoryPushChangesPushesExistingLocalCommit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git executable not available")
+	}
+
+	tmpDir := t.TempDir()
+	remoteDir := filepath.Join(tmpDir, "remote.git")
+	localDir := filepath.Join(tmpDir, "local")
+
+	runGitCommand(t, tmpDir, "init", "--bare", remoteDir)
+	runGitCommand(t, tmpDir, "init", "-b", "main", localDir)
+	runGitCommand(t, localDir, "config", "user.name", "tester")
+	runGitCommand(t, localDir, "config", "user.email", "tester@example.com")
+	runGitCommand(t, localDir, "remote", "add", "origin", remoteDir)
+	writeSystemGitCommit(t, localDir, "README.md", "one\n", "initial commit")
+	runGitCommand(t, localDir, "push", "-u", "origin", "main")
+	writeSystemGitCommit(t, localDir, "README.md", "two\n", "local commit")
+
+	repo, err := NewRepository(localDir)
+	if err != nil {
+		t.Fatalf("NewRepository() error = %v", err)
+	}
+	if err := (&SkillRepository{repo: repo}).PushChanges(""); err != nil {
+		t.Fatalf("PushChanges() error = %v", err)
+	}
+
+	remoteContent := runGitCommand(t, remoteDir, "show", "main:README.md")
+	if remoteContent != "two\n" {
+		t.Fatalf("remote README = %q, want committed local content", remoteContent)
+	}
+}
+
 func TestRepositoryPullUsesSystemGit(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git executable not available")

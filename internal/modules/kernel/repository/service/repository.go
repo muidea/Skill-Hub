@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/muidea/skill-hub/internal/config"
+	gitpkg "github.com/muidea/skill-hub/internal/git"
 	"github.com/muidea/skill-hub/internal/multirepo"
 	"github.com/muidea/skill-hub/pkg/errors"
 	"github.com/muidea/skill-hub/pkg/spec"
@@ -100,10 +101,10 @@ func (r *Repository) RemoveRepository(name string) error {
 	return manager.RemoveRepository(name)
 }
 
-func (r *Repository) SyncRepository(name string) error {
+func (r *Repository) SyncRepository(name string) (*gitpkg.RepositorySyncResult, error) {
 	manager, err := r.Manager()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	return manager.SyncRepository(name)
 }

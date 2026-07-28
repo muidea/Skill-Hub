@@ -71,11 +71,11 @@ func TestRunRepoSyncJSONViaServiceWithoutLocalConfig(t *testing.T) {
 				},
 			}, nil
 		},
-		syncRepoFn: func(ctx context.Context, name string) error {
+		syncRepoFn: func(ctx context.Context, name string) (*httpapibiz.RepoSyncData, error) {
 			if name == "main" {
-				return nil
+				return &httpapibiz.RepoSyncData{Status: "synced"}, nil
 			}
-			return errors.New("unexpected repo sync")
+			return nil, errors.New("unexpected repo sync")
 		},
 	})
 	defer reset()
@@ -115,6 +115,36 @@ func TestRunPushDryRunJSONViaServiceWithoutLocalConfig(t *testing.T) {
 		}
 	})
 	if !strings.Contains(output, `"status": "planned"`) || !strings.Contains(output, "skills/demo/SKILL.md") {
+		t.Fatalf("unexpected push json output: %q", output)
+	}
+}
+
+func TestRunPushDryRunJSONViaServiceWithExistingLocalCommit(t *testing.T) {
+	pushDryRun = true
+	pushJSON = true
+	t.Cleanup(func() {
+		pushDryRun = false
+		pushJSON = false
+		pushForce = false
+		pushMessage = ""
+	})
+
+	reset := stubServiceBridge(t, &fakeServiceBridgeClient{
+		skillRepositoryStatusFn: func(ctx context.Context) (*httpapibiz.SkillRepositoryStatusData, error) {
+			return &httpapibiz.SkillRepositoryStatusData{Status: "技能仓库状态:\n文件状态:\n"}, nil
+		},
+		checkSkillRepositoryFn: func(ctx context.Context) (*httpapibiz.SkillRepositoryCheckData, error) {
+			return &httpapibiz.SkillRepositoryCheckData{Status: "ahead", Ahead: 1}, nil
+		},
+	})
+	defer reset()
+
+	output := captureStdout(t, func() {
+		if err := runPush(); err != nil {
+			t.Fatalf("runPush returned error: %v", err)
+		}
+	})
+	if !strings.Contains(output, `"status": "planned"`) || !strings.Contains(output, `"has_pending_push": true`) || !strings.Contains(output, `"ahead": 1`) {
 		t.Fatalf("unexpected push json output: %q", output)
 	}
 }
@@ -981,7 +1011,7 @@ type fakeServiceBridgeClient struct {
 	listReposFn             func(context.Context) (*httpapibiz.RepoListData, error)
 	addRepoFn               func(context.Context, config.RepositoryConfig) error
 	removeRepoFn            func(context.Context, string) error
-	syncRepoFn              func(context.Context, string) error
+	syncRepoFn              func(context.Context, string) (*httpapibiz.RepoSyncData, error)
 	enableRepoFn            func(context.Context, string) error
 	disableRepoFn           func(context.Context, string) error
 	setDefaultRepoFn        func(context.Context, string) error
@@ -1032,11 +1062,11 @@ func (f *fakeServiceBridgeClient) RemoveRepo(ctx context.Context, name string) e
 	}
 	return nil
 }
-func (f *fakeServiceBridgeClient) SyncRepo(ctx context.Context, name string) error {
+func (f *fakeServiceBridgeClient) SyncRepo(ctx context.Context, name string) (*httpapibiz.RepoSyncData, error) {
 	if f.syncRepoFn != nil {
 		return f.syncRepoFn(ctx, name)
 	}
-	return nil
+	return &httpapibiz.RepoSyncData{Status: "synced"}, nil
 }
 func (f *fakeServiceBridgeClient) EnableRepo(ctx context.Context, name string) error {
 	if f.enableRepoFn != nil {

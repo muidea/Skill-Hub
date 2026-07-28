@@ -145,6 +145,9 @@ func (sr *SkillRepository) PushChanges(message string) error {
 	if !sr.repo.IsInitialized() {
 		return fmt.Errorf("技能仓库未初始化，请先设置远程仓库URL")
 	}
+	if sr.repo.remoteURL == "" {
+		return fmt.Errorf("未设置远程仓库URL")
+	}
 
 	if err := sr.resolveRemoteSkillUpdatesByVersion(); err != nil {
 		return err
@@ -156,18 +159,23 @@ func (sr *SkillRepository) PushChanges(message string) error {
 		return fmt.Errorf("获取仓库状态失败: %w", err)
 	}
 
-	if !hasRepositoryChanges(status) {
+	if hasRepositoryChanges(status) {
+		if message == "" {
+			message = SuggestedCommitMessageFromStatus(status)
+		}
+
+		fmt.Println("提交更改...")
+		if err := sr.repo.Commit(message); err != nil {
+			return fmt.Errorf("提交失败: %w", err)
+		}
+	}
+
+	updates, err := sr.repo.CheckRemoteUpdates()
+	if err != nil {
+		return fmt.Errorf("检查本地待推送提交失败: %w", err)
+	}
+	if updates == nil || updates.Ahead == 0 {
 		return fmt.Errorf("没有要推送的更改")
-	}
-
-	// 提交更改
-	if message == "" {
-		message = SuggestedCommitMessageFromStatus(status)
-	}
-
-	fmt.Println("提交更改...")
-	if err := sr.repo.Commit(message); err != nil {
-		return fmt.Errorf("提交失败: %w", err)
 	}
 
 	// 推送到远程

@@ -34,6 +34,13 @@ type RepoListData struct {
 	Items       []config.RepositoryConfig `json:"items"`
 }
 
+type RepoSyncData struct {
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+	Ahead   int    `json:"ahead"`
+	Behind  int    `json:"behind"`
+}
+
 type SkillRepositoryStatusData struct {
 	Status string `json:"status"`
 }
@@ -58,9 +65,13 @@ type PushSkillRepositoryPreviewData struct {
 	DefaultRepo      string   `json:"default_repo,omitempty"`
 	RemoteURL        string   `json:"remote_url,omitempty"`
 	HasChanges       bool     `json:"has_changes"`
+	HasPendingPush   bool     `json:"has_pending_push"`
 	ChangedFiles     []string `json:"changed_files"`
 	SuggestedMessage string   `json:"suggested_message"`
 	RawStatus        string   `json:"raw_status"`
+	RemoteStatus     string   `json:"remote_status,omitempty"`
+	Ahead            int      `json:"ahead"`
+	Behind           int      `json:"behind"`
 }
 
 type PushSkillRepositoryRequest struct {

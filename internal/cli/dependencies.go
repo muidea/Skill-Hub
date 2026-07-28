@@ -9,6 +9,7 @@ import (
 
 	"github.com/muidea/skill-hub/internal/config"
 	gitpkg "github.com/muidea/skill-hub/internal/git"
+	httpapibiz "github.com/muidea/skill-hub/internal/modules/blocks/httpapi/biz"
 	runtimemodule "github.com/muidea/skill-hub/internal/modules/kernel/runtime"
 	"github.com/muidea/skill-hub/internal/multirepo"
 	"github.com/muidea/skill-hub/internal/state"
@@ -90,8 +91,17 @@ func removeRepository(name string) error {
 	return runtimeSvc.RemoveRepository(name)
 }
 
-func syncRepository(name string) error {
-	return runtimeSvc.SyncRepository(name)
+func syncRepository(name string) (*httpapibiz.RepoSyncData, error) {
+	result, err := runtimeSvc.SyncRepository(name)
+	if err != nil {
+		return nil, err
+	}
+	return &httpapibiz.RepoSyncData{
+		Status:  result.Status,
+		Message: result.Message,
+		Ahead:   result.Ahead,
+		Behind:  result.Behind,
+	}, nil
 }
 
 func enableRepository(name string) error {
