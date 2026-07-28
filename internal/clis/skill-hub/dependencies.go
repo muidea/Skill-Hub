@@ -204,6 +204,11 @@ func EnsureProjectWorkspace(cwd string) (*spec.ProjectState, error) {
 	if err != nil {
 		return nil, errors.WrapWithCode(err, "EnsureProjectWorkspace", errors.ErrSystem, "查找项目失败")
 	}
+	// .agents/skills 是项目技能工作区的明确边界。若当前目录尚未登记、
+	// 但 Find 命中了父项目，不能把当前目录的独立技能目录误归属给父项目。
+	if shouldCreateNestedWorkspace(cwd, projectState) {
+		projectState = nil
+	}
 
 	// 如果项目不存在于状态文件中，需要初始化
 	if projectState == nil {
@@ -223,6 +228,18 @@ func EnsureProjectWorkspace(cwd string) (*spec.ProjectState, error) {
 	}
 
 	return projectState, nil
+}
+
+func shouldCreateNestedWorkspace(cwd string, projectState *spec.ProjectState) bool {
+	if projectState == nil || projectState.ProjectPath == "" {
+		return false
+	}
+	currentPath, err := filepath.Abs(cwd)
+	if err != nil || projectState.ProjectPath == currentPath {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(currentPath, ".agents", "skills"))
+	return err == nil && info.IsDir()
 }
 
 // createNewProjectWorkspace 创建新的项目工作区。

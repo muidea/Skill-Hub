@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/muidea/skill-hub/internal/testutils"
+	"github.com/muidea/skill-hub/pkg/spec"
 )
 
 func TestCheckInitDependency(t *testing.T) {
@@ -186,6 +187,80 @@ func TestEnsureProjectWorkspace(t *testing.T) {
 			t.Errorf("EnsureProjectWorkspace() projectState.PreferredTarget = %v, want open_code", projectState.PreferredTarget)
 		}
 	})
+}
+
+func TestShouldCreateNestedWorkspace(t *testing.T) {
+	parentDir := t.TempDir()
+	childWithWorkspace := filepath.Join(parentDir, "child-with-workspace")
+	childWithoutWorkspace := filepath.Join(parentDir, "child-without-workspace")
+	if err := os.MkdirAll(filepath.Join(childWithWorkspace, ".agents", "skills"), 0755); err != nil {
+		t.Fatalf("create nested workspace: %v", err)
+	}
+	if err := os.MkdirAll(childWithoutWorkspace, 0755); err != nil {
+		t.Fatalf("create nested directory: %v", err)
+	}
+	parentState := &spec.ProjectState{ProjectPath: parentDir}
+
+	if !shouldCreateNestedWorkspace(childWithWorkspace, parentState) {
+		t.Fatal("nested .agents/skills directory should override parent project state")
+	}
+	if shouldCreateNestedWorkspace(childWithoutWorkspace, parentState) {
+		t.Fatal("ordinary nested directory should inherit parent project state")
+	}
+	if shouldCreateNestedWorkspace(childWithWorkspace, &spec.ProjectState{ProjectPath: childWithWorkspace}) {
+		t.Fatal("exact project state should not require a new workspace")
+	}
+}
+
+func TestEnsureProjectWorkspaceCreatesNestedWorkspaceAtAgentsBoundary(t *testing.T) {
+	skillHubHome, _, parentDir := testutils.SetupTestSkillHub(t)
+	originalHome := os.Getenv("SKILL_HUB_HOME")
+	os.Setenv("SKILL_HUB_HOME", skillHubHome)
+	defer os.Setenv("SKILL_HUB_HOME", originalHome)
+
+	statePath := filepath.Join(skillHubHome, "state.json")
+	stateContent := `{
+  "` + parentDir + `": {"project_path":"` + parentDir + `", "skills": {}}
+}`
+	if err := os.WriteFile(statePath, []byte(stateContent), 0644); err != nil {
+		t.Fatalf("write parent state: %v", err)
+	}
+
+	nestedDir := filepath.Join(parentDir, "nested-project")
+	if err := os.MkdirAll(filepath.Join(nestedDir, ".agents", "skills"), 0755); err != nil {
+		t.Fatalf("create nested workspace: %v", err)
+	}
+
+	originalStdin := os.Stdin
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stdin pipe: %v", err)
+	}
+	if _, err := writer.WriteString("y\n"); err != nil {
+		t.Fatalf("write confirmation: %v", err)
+	}
+	_ = writer.Close()
+	os.Stdin = reader
+	defer func() {
+		os.Stdin = originalStdin
+		_ = reader.Close()
+	}()
+
+	projectState, err := EnsureProjectWorkspace(nestedDir)
+	if err != nil {
+		t.Fatalf("EnsureProjectWorkspace(nested): %v", err)
+	}
+	if projectState.ProjectPath != nestedDir {
+		t.Fatalf("nested project path = %q, want %q", projectState.ProjectPath, nestedDir)
+	}
+
+	loaded, err := localRuntime.ProjectState().Load(nestedDir)
+	if err != nil {
+		t.Fatalf("load nested state: %v", err)
+	}
+	if loaded.ProjectPath != nestedDir {
+		t.Fatalf("saved nested project path = %q, want %q", loaded.ProjectPath, nestedDir)
+	}
 }
 
 func TestCheckSkillExists(t *testing.T) {
