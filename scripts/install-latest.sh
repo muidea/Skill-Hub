@@ -202,49 +202,6 @@ extract_file() {
     esac
 }
 
-update_registered_serve_instances() {
-    local install_path="$1"
-    local status_output
-    local running_services
-    local service_name
-    local failed=0
-
-    if [[ ! -x "$install_path" ]]; then
-        echo "  ⚠️  未找到已安装的 skill-hub，跳过 serve 实例更新"
-        return 0
-    fi
-
-    if ! status_output=$("$install_path" serve status 2>&1); then
-        echo "  ⚠️  读取 serve 注册表失败"
-        echo "$status_output"
-        return 1
-    fi
-
-    running_services=$(printf '%s\n' "$status_output" | awk -F '\t' '$2=="running"{print $1}')
-    if [ -z "$running_services" ]; then
-        echo "  ✅ 未发现运行中的已注册 serve 实例"
-        return 0
-    fi
-
-    while IFS= read -r service_name; do
-        [ -n "$service_name" ] || continue
-
-        echo "  重启 serve 实例: $service_name"
-        if "$install_path" serve stop "$service_name" && "$install_path" serve start "$service_name"; then
-            UPDATED_SERVE_COUNT=$((UPDATED_SERVE_COUNT + 1))
-            echo "  ✅ $service_name 已更新到新版"
-        else
-            failed=1
-            echo "  ✗ $service_name 更新失败"
-        fi
-    done <<< "$running_services"
-
-    if [ "$failed" -ne 0 ]; then
-        return 1
-    fi
-    return 0
-}
-
 install_agent_skills() {
     local source_dir="${1:-agent-skills}"
     local enabled="${SKILL_HUB_INSTALL_AGENT_SKILLS:-1}"
@@ -424,6 +381,17 @@ main() {
         rm -rf "$TEMP_DIR"
         exit 1
     fi
+
+    DAEMON_BINARY="skill-hubd"
+    if [ "$OS" = "windows" ]; then
+        DAEMON_BINARY="skill-hubd.exe"
+    fi
+    if [ ! -f "$DAEMON_BINARY" ]; then
+        echo "错误: Release 包中未找到 $DAEMON_BINARY"
+        cd /
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
     
     echo "找到可执行文件: $ACTUAL_BINARY"
     
@@ -438,15 +406,20 @@ main() {
     # 安装信息
     local install_dir="$HOME/.local/bin"
     local install_name="skill-hub"
+	local daemon_install_name="skill-hubd"
     if [ "$OS" = "windows" ]; then
         install_name="skill-hub.exe"
+		daemon_install_name="skill-hubd.exe"
     fi
     local install_path="$install_dir/$install_name"
     local install_tmp="$install_dir/.${install_name}.new.$$"
+	local daemon_install_path="$install_dir/$daemon_install_name"
+	local daemon_install_tmp="$install_dir/.${daemon_install_name}.new.$$"
 
     echo ""
     echo "安装信息:"
     echo "• 可执行文件: ./$ACTUAL_BINARY"
+	echo "• daemon: ./$DAEMON_BINARY"
     echo "• 将自动安装到: $install_path"
     
     # 自动安装到 ~/.local/bin/
@@ -458,7 +431,8 @@ main() {
     
     # 先复制到同目录临时文件，再通过 rename 覆盖目标文件，避免正在运行的旧二进制导致 Text file busy。
     rm -f "$install_tmp"
-    if cp "$ACTUAL_BINARY" "$install_tmp" && chmod 755 "$install_tmp" && mv -f "$install_tmp" "$install_path"; then
+	rm -f "$daemon_install_tmp"
+    if cp "$ACTUAL_BINARY" "$install_tmp" && chmod 755 "$install_tmp" && cp "$DAEMON_BINARY" "$daemon_install_tmp" && chmod 755 "$daemon_install_tmp" && mv -f "$install_tmp" "$install_path" && mv -f "$daemon_install_tmp" "$daemon_install_path"; then
         echo "✓ 安装成功！"
         
         # 安装完成信息提示
@@ -467,6 +441,7 @@ main() {
         echo "• 程序名称: $install_name"
         echo "• 可执行文件: $ACTUAL_BINARY"
         echo "• 安装位置: $install_path"
+		echo "• daemon 安装位置: $daemon_install_path"
         echo "• 版本: $VERSION"
         echo "• 文件大小: $(du -h "$ACTUAL_BINARY" | cut -f1)"
         
@@ -628,7 +603,7 @@ main() {
         echo "✗ 安装失败"
         echo "文件保存在: $TEMP_DIR"
         echo "目标位置: $install_path"
-        echo "如果旧版 skill-hub 或 serve 进程正在运行，请先停止后重试。"
+		echo "如果旧版 skill-hub 或 skill-hubd 进程正在运行，请先停止后重试。"
         echo "您也可以手动执行以下命令完成覆盖安装:"
         echo "  cp \"$TEMP_DIR/$ACTUAL_BINARY\" \"$install_tmp\" && chmod 755 \"$install_tmp\" && mv -f \"$install_tmp\" \"$install_path\""
         exit 1
@@ -715,13 +690,6 @@ main() {
     echo "  5. 技能应用: $install_name apply"
 
     echo ""
-    echo "🔁 更新已注册 serve 实例..."
-    if ! update_registered_serve_instances "$install_path"; then
-        echo "✗ serve 实例更新失败"
-        echo "请检查服务日志，或手动执行: $install_name serve stop <name> && $install_name serve start <name>"
-        exit 1
-    fi
-    
     # 清理提示和总结
     echo ""
     echo "📝 安装总结:"
@@ -738,7 +706,7 @@ main() {
     else
         echo "• ⚠️  Agent Skills: 未安装或已跳过"
     fi
-    echo "• ✅ serve更新: 已重启 $UPDATED_SERVE_COUNT 个运行中的已注册实例"
+		echo "• ✅ daemon: 已安装 $daemon_install_name；请由系统服务管理器重启正在运行的 skill-hubd"
     echo ""
     echo "🗑️  清理提示:"
     echo "临时文件保存在: $TEMP_DIR"

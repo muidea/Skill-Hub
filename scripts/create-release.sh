@@ -516,6 +516,11 @@ if [ "$BUILD_VERSION" != "$VERSION" ]; then
     echo -e "${RED}版本不匹配: 期望 $VERSION, 实际 $BUILD_VERSION${NC}"
     exit 1
 fi
+DAEMON_VERSION="$(./bin/skill-hubd --version | sed -n 's/^skill-hubd version \([^ ]*\).*/\1/p')"
+if [ "$DAEMON_VERSION" != "$VERSION" ]; then
+    echo -e "${RED}skill-hubd 版本不匹配: 期望 $VERSION, 实际 $DAEMON_VERSION${NC}"
+    exit 1
+fi
 
 mkdir -p dist
 cp "$NOTES_FILE" "dist/release-notes-v$VERSION.md"

@@ -117,14 +117,12 @@ class TestSkillPatternFlag:
         assert ids == {'magic-helper', 'magic-pack'}, f'unexpected ids: {ids}'
 
     @pytest.mark.no_debug
-    def test_use_positional_rejected(self):
+    def test_use_positional_id_is_accepted(self):
         self._init()
         self._write_repo_skill('magic-helper', 'Magic Helper')
         self._refresh()
         result = self.cmd.run('use', ['magic-helper'], cwd=str(self.project_dir))
-        assert not result.success, f'positional use should fail, got: {result.stdout}'
-        combined = result.stdout + result.stderr
-        assert '--pattern' in combined, f'expected --pattern hint, got: {combined}'
+        assert result.success, f'positional use should succeed, got: {result.stderr}\n{result.stdout}'
 
     @pytest.mark.no_debug
     def test_apply_pattern_flag_dispatches_per_skill(self):

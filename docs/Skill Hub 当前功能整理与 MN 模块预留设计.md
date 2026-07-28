@@ -1,5 +1,7 @@
 # Skill Hub 当前功能整理与 MN 模块预留设计
 
+> 历史设计记录（不再描述当前目录或运行模型）。当前正式结构以《[Skill Hub 双进程架构收口设计](Skill%20Hub%20双进程架构收口设计.md)》为准：`skill-hub` 是 Cobra CLI，`skill-hubd` 是唯一 daemon/HTTP listener；`internal/clis/skill-hub`、`internal/runtime/{remote,local}`、`internal/adapters/hubclient`、`internal/modules/{blocks,application}` 是正式路径。
+
 **文档状态**：面向后续 `mn` 模块开发前的整理说明  
 **适用范围**：当前 `skill-hub` 已有能力边界、模块归类、后续迁移顺序  
 **当前验证状态**：`go test ./...` 通过；`tests/e2e` 当前总结果为 `102 passed, 3 skipped`

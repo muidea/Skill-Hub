@@ -8,20 +8,21 @@
 
 ```
 skill-hub/
-├── application/skill-hub/  # 主应用入口
-│   ├── cmd/                # 主程序入口
-│   └── docker/             # 容器入口
-├── application/skill-validate/ # 独立校验工具入口
-├── internal/               # 内部包（不对外暴露）
-│   ├── cli/               # CLI命令实现
-│   ├── modules/           # 模块化壳层（对齐多模块结构）
-│   ├── adapter/           # 适配器层（cursor, claude, opencode）
-│   ├── engine/            # 技能引擎
-│   ├── multirepo/         # 多仓库管理
-│   ├── state/             # 状态管理
-│   ├── config/            # 配置管理
-│   ├── template/          # 模板引擎
-│   └── git/               # Git操作封装
+├── application/skill-hub/cmd/   # Cobra CLI 入口
+├── application/skill-hubd/cmd/  # daemon 入口（唯一 HTTP listener）
+├── application/skill-validate/  # 独立校验工具入口
+├── internal/
+│   ├── clis/skill-hub/          # Cobra 参数、交互和渲染
+│   ├── services/skill-hubd/     # daemon 进程生命周期
+│   ├── runtime/{remote,local}/  # daemon 优先与嵌入式降级运行时
+│   ├── adapters/                # HTTP client、远端搜索等协议适配器
+│   ├── initiators/              # route registry 等基础设施
+│   ├── modules/
+│   │   ├── blocks/              # project_state、repository 等资源 owner
+│   │   └── application/         # 项目用例、HTTP API 和 Web UI 编排
+│   ├── pkg/*port/               # owner 间稳定 port 与 DTO
+│   ├── config/, state/, git/, multirepo/  # 被 owner 使用的本地能力
+│   └── engine/, template/       # 技能解析与模板能力
 ├── pkg/spec/              # 公共数据结构定义
 ├── examples/              # 技能示例
 ├── scripts/               # 构建和安装脚本
@@ -33,31 +34,30 @@ skill-hub/
 
 #### 产品与运行模型
 
-`skill-hub` 的主产品形态是命令行工具，同时支持以 `serve` 模式运行。
+`skill-hub` 是命令行客户端，`skill-hubd` 是独立的本地 daemon。
 
 - **CLI 模式**：用户直接执行 `skill-hub ...`
-- **Serve 模式**：用户执行 `skill-hub serve`，由本地服务托管 `~/.skill-hub/`，并提供 Web 管理能力
+- **Daemon 模式**：用户执行 `skill-hubd`，由本地服务托管 `~/.skill-hub/`，并提供 Web 管理能力
 
 两者共享同一套状态与仓库数据：
 
 - `~/.skill-hub/`：全局管理域，承接多仓库配置、本地仓库存储、默认仓库、全局状态、索引和缓存
 - `<project>/.agents/skills/`：项目工作域，承接某个项目实际使用的 skill 内容
 
-设计上，CLI 仍然是主要用户入口；当本地 `serve` 实例可用时，CLI 优先复用服务能力，以统一状态装载、远端访问和 Web/CLI 共用逻辑；当本地服务不可用时，所有命令都应回退到本地执行。
+设计上，CLI 仍然是主要用户入口；当本地 `skill-hubd` 实例可用时，CLI 优先复用服务能力，以统一状态装载、远端访问和 Web/CLI 共用逻辑；当本地服务不可用时，所有命令都应回退到本地执行。
 
 #### 核心组件
 
-1. **CLI层** (`internal/cli/`)
+1. **CLI层** (`internal/clis/skill-hub/`)
    - 命令解析和路由
    - 用户交互和输出
    - 错误处理和日志
    - 多仓库管理命令
 
-2. **适配器层** (`internal/adapter/`)
-   - `cursor/`: Cursor工具适配器
-   - `claude/`: Claude Code适配器  
-   - `opencode/`: OpenCode适配器
-   - 统一的适配器接口
+2. **运行时与适配器层** (`internal/runtime/`、`internal/adapters/`)
+   - `remote`：探测 `skill-hubd` 并通过 HTTP client 调用既有 API
+   - `local`：daemon 不可用时显式装配本地能力，不启动 HTTP
+   - `hubclient`：HTTP 协议客户端；`remotesearch`：远端搜索适配器
 
 3. **技能引擎** (`internal/engine/`)
    - 技能加载和解析
@@ -92,11 +92,11 @@ skill-hub/
 
 4. **远端搜索业务**
    - `search`
-   - 设计上在本地 `serve` 实例可用时优先由服务统一承接远端交互，不可用时回退到本地执行
+   - 设计上在本地 `skill-hubd` 实例可用时优先由服务统一承接远端交互，不可用时回退到本地执行
 
 5. **底层运维业务**
    - `git *`
-   - `serve`
+   - `skill-hubd`
    - `init`
 
 #### 边界约束
@@ -206,9 +206,10 @@ make help
 make build VERSION=1.0.0 COMMIT=$(git rev-parse --short HEAD)
 
 # 构建标志
-LDFLAGS="-X 'skill-hub/internal/cli.version=$(VERSION)' \
-         -X 'skill-hub/internal/cli.commit=$(COMMIT)' \
-         -X 'skill-hub/internal/cli.date=$(DATE)'"
+LDFLAGS="-X 'github.com/muidea/skill-hub/internal/clis/skill-hub.version=$(VERSION)' \
+         -X 'github.com/muidea/skill-hub/internal/clis/skill-hub.commit=$(COMMIT)' \
+         -X 'github.com/muidea/skill-hub/internal/clis/skill-hub.date=$(DATE)' \
+         -X 'github.com/muidea/skill-hub/internal/services/skill-hubd.version=$(VERSION)'"
 ```
 
 #### 多平台构建
@@ -372,10 +373,10 @@ git push origin v1.0.0
 #### 版本文件
 ```bash
 # 版本信息存储在代码中
-internal/cli/version.go
+internal/clis/skill-hub/version.go
 
 # 构建时注入版本信息
--ldflags="-X 'skill-hub/internal/cli.version=$(VERSION)'"
+-ldflags="-X 'github.com/muidea/skill-hub/internal/clis/skill-hub.version=$(VERSION)'"
 ```
 
 ## 贡献指南
@@ -566,8 +567,8 @@ func TestNewToolAdapter(t *testing.T) {
 
 #### 1. 创建命令文件
 ```bash
-touch internal/cli/newcmd.go
-touch internal/cli/newcmd_test.go
+touch internal/clis/skill-hub/newcmd.go
+touch internal/clis/skill-hub/newcmd_test.go
 ```
 
 #### 2. 实现命令逻辑

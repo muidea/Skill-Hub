@@ -329,6 +329,11 @@ func (r *Repository) CheckRemoteUpdates() (*RemoteUpdateStatus, error) {
 	}
 
 	if err := r.FetchMain(); err != nil {
+		if strings.Contains(err.Error(), "couldn't find remote ref main") {
+			result.Status = "no_remote_branch"
+			result.Message = "远程仓库尚未创建 main 分支"
+			return result, nil
+		}
 		return nil, fmt.Errorf("检查远程更新失败: %w", err)
 	}
 

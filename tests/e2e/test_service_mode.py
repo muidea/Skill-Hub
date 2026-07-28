@@ -349,83 +349,6 @@ class TestServiceMode:
         finally:
             service.stop()
 
-    def test_named_service_instance_management(self):
-        try:
-            port = self._reserve_port()
-        except PermissionError:
-            pytest.skip("localhost bind not permitted in current environment")
-        except OSError as err:
-            if "operation not permitted" in str(err).lower():
-                pytest.skip("localhost bind not permitted in current environment")
-            raise
-
-        register_result = self.cmd.run(
-            "serve",
-            ["register", "managed", "--host", "127.0.0.1", "--port", str(port), "--secret-key", "write-secret"],
-            cwd=str(self.project_dir),
-            env=self.service_env,
-        )
-        assert register_result.success, register_result.stderr
-        assert "远端推送: secret-key" in register_result.stdout
-
-        start_result = self.cmd.run(
-            "serve",
-            ["start", "managed"],
-            cwd=str(self.project_dir),
-            env=self.service_env,
-        )
-        assert start_result.success, start_result.stderr
-        assert "已启动" in start_result.stdout
-
-        try:
-            status_result = self.cmd.run(
-                "serve",
-                ["status", "managed"],
-                cwd=str(self.project_dir),
-                env=self.service_env,
-            )
-            assert status_result.success, status_result.stderr
-            assert "managed\trunning" in status_result.stdout
-            assert f"http://127.0.0.1:{port}" in status_result.stdout
-            assert "push=secret-key" in status_result.stdout
-
-            health = urllib.request.urlopen(f"http://127.0.0.1:{port}/api/v1/health", timeout=2).read().decode("utf-8")
-            assert '"status":"ok"' in health
-        finally:
-            stop_result = self.cmd.run(
-                "serve",
-                ["stop", "managed"],
-                cwd=str(self.project_dir),
-                env=self.service_env,
-            )
-            assert stop_result.success, stop_result.stderr
-
-        stopped_status = self.cmd.run(
-            "serve",
-            ["status", "managed"],
-            cwd=str(self.project_dir),
-            env=self.service_env,
-        )
-        assert stopped_status.success, stopped_status.stderr
-        assert "managed\tstopped" in stopped_status.stdout
-
-        remove_result = self.cmd.run(
-            "serve",
-            ["remove", "managed"],
-            cwd=str(self.project_dir),
-            env=self.service_env,
-        )
-        assert remove_result.success, remove_result.stderr
-
-        final_status = self.cmd.run(
-            "serve",
-            ["status"],
-            cwd=str(self.project_dir),
-            env=self.service_env,
-        )
-        assert final_status.success, final_status.stderr
-        assert "managed" not in final_status.stdout
-
     def test_service_bridge_use_apply_feedback_flow(self):
         repo_skill_dir, repo_skill_file = self._prepare_service_skill()
         initial_repo_content = repo_skill_file.read_text(encoding="utf-8")
@@ -440,7 +363,7 @@ class TestServiceMode:
 
             use_result = self.cmd.run("use", ["--pattern", "service-skill"], cwd=str(self.consumer_project_dir), env=bridge_env)
             assert use_result.success, use_result.stderr
-            assert "已成功标记为使用" in use_result.stdout
+            assert "已启用 service-skill" in use_result.stdout
 
             apply_result = self.cmd.run("apply", cwd=str(self.consumer_project_dir), env=bridge_env)
             assert apply_result.success, apply_result.stderr

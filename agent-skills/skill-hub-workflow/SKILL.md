@@ -134,19 +134,18 @@ skill-hub upgrade --check
 skill-hub upgrade --yes
 ```
 
-`upgrade` verifies Release sha256 archives, replaces the current binary on Linux/macOS, refreshes bundled `skill-hub-*` agent workflow skills, and restarts registered running `serve` instances unless disabled.
+`upgrade` verifies Release sha256 archives, replaces both `skill-hub` and `skill-hubd` on Linux/macOS, and refreshes bundled `skill-hub-*` agent workflow skills. Restart a running daemon through its process manager after upgrading.
 
-## Serve Troubleshooting
+## Daemon Troubleshooting
 
-If a non-push command returns an old read-only error, the running `serve` process is stale. Update or restart the running service instead of changing the project workflow.
+If a non-push command returns an old read-only error, the running `skill-hubd` process is stale. Update or restart the daemon instead of changing the project workflow.
 
 ```bash
-skill-hub serve status
-skill-hub serve stop <name>
-skill-hub serve start <name>
+skill-hubd --host 127.0.0.1 --port 5525
+# Or restart the systemd/launchd service that owns skill-hubd.
 ```
 
-The latest installer and `skill-hub upgrade --yes` restart running registered `serve` instances after replacing the binary:
+The latest installer and `skill-hub upgrade --yes` install both binaries. Restart a foreground or system-managed daemon through its owner:
 
 ```bash
 curl -s https://raw.githubusercontent.com/muidea/skill-hub/master/scripts/install-latest.sh | bash

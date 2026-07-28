@@ -14,7 +14,7 @@
 - 将项目中改进过的 skill 反馈回默认仓库；当工作区版本低于仓库版本时会先阻断反馈，避免旧副本覆盖高版本仓库内容。
 - 将托管 skill 启用到本机全局 agent skills 目录，服务 Codex、OpenCode、Claude 等工具。
 - 支持已有 skill 登记、批量导入、验证、重复副本检测、路径可移植性审计和刷新审计报告。
-- 支持本地 `serve` 模式，为 CLI 和 Web 管理提供统一的本机执行入口。
+- 提供独立 `skill-hubd` daemon，为 CLI 和 Web 管理提供统一的本机执行入口。
 - 支持从 GitHub Releases 检测和升级已安装的 `skill-hub`。
 
 ## 安装
@@ -131,7 +131,7 @@ skill-hub lint . --paths --project-root "$PWD" --json
 启动本地服务：
 
 ```bash
-skill-hub serve
+skill-hubd
 ```
 
 ## 文档

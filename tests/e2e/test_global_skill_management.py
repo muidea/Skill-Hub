@@ -72,7 +72,8 @@ Use this skill for global management coverage.
         before_data = json.loads(status_before.stdout)
         assert before_data["skill_count"] >= 1
         before_codex = next(item for item in before_data["items"] if item["agent"] == "codex")
-        assert before_codex["status"] == "missing_agent_dir"
+        assert before_codex["status"] == "unavailable"
+        assert before_codex["legacy_status"] == "missing_agent_dir"
 
         dry_run = self.cmd.run(
             "apply",
@@ -105,7 +106,8 @@ Use this skill for global management coverage.
         assert status_after.success, f"status --global after apply failed: {status_after.stderr}\n{status_after.stdout}"
         after_data = json.loads(status_after.stdout)
         after_codex = next(item for item in after_data["items"] if item["agent"] == "codex")
-        assert after_codex["status"] == "ok"
+        assert after_codex["status"] == "synced"
+        assert after_codex["legacy_status"] == "ok"
 
         remove_result = self.cmd.run(
             "remove",

@@ -364,6 +364,11 @@ case "${1:-}" in
 echo "skill-hub version $version (commit: test, built: now)"
 EOF
         chmod +x bin/skill-hub
+        cat > bin/skill-hubd <<EOF
+#!/usr/bin/env bash
+echo "skill-hubd version $version (commit: test, built: now)"
+EOF
+        chmod +x bin/skill-hubd
         ;;
     *)
         echo "unexpected fake make command: $*" >&2

@@ -5,13 +5,13 @@
 > 当前以 [README.md](../README.md)、[DEVELOPMENT.md](../DEVELOPMENT.md) 和 [Skill-Hub命令规范.md](./Skill-Hub命令规范.md) 为准。
 >
 > 当前已经明确的口径包括：
-> - `skill-hub` 首先是命令行工具，`serve` 托管 `~/.skill-hub/` 并为 CLI / Web 提供统一执行入口
+> - `skill-hub` 首先是命令行工具；`skill-hubd` 托管 `~/.skill-hub/` 并为 CLI / Web 提供统一执行入口
 > - `~/.skill-hub/` 是全局管理域，`<project>/.agents/skills/` 是项目工作域
 > - `use` 记录来源仓库，`apply` / `status` 基于来源仓库工作
 > - `feedback` 只归档到默认仓库
 > - `pull` / `push` 只针对默认仓库，但属于项目工作流的一部分
 > - `create` / `remove` 只针对项目本地工作区，不服务化
-> - `validate` 只校验项目本地工作区内容，但当前实现已支持通过本地 `serve` 桥接执行
+> - `validate` 只校验项目本地工作区内容，但当前实现已支持通过本地 `skill-hubd` 桥接执行
 > - `search` 的目标形态是在本地 `serve` 可用时优先通过服务承接远端交互，不可用时回退到本地执行
 
 ## 1. 概述

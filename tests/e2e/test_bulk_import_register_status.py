@@ -55,7 +55,8 @@ Use this skill in tests.
         data = json.loads(result.stdout)
         assert data["skill_count"] == 1
         assert data["items"][0]["skill_id"] == "manual-skill"
-        assert data["items"][0]["status"] == "Modified"
+        assert data["items"][0]["status"] == "modified"
+        assert data["items"][0]["legacy_status"] == "Modified"
         assert data["items"][0]["local_version"] == "1.0.0"
 
     def test_validate_fix_repairs_legacy_frontmatter(self):

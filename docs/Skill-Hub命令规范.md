@@ -45,7 +45,7 @@ ${XDG_DATA_HOME:-$HOME/.local/share}/skill-hub/agent-skills
 | 命令 | 功能描述 | 语法 |
 |------|----------|------|
 | `init` | 初始化本地仓库 | `skill-hub init [git_url]` |
-| `serve` | 以本地服务模式运行 | `skill-hub serve [--host <value>] [--port <value>] [--secret-key <value>] [--open-browser]` |
+| `skill-hubd` | 启动本地 daemon | `skill-hubd [--host <value>] [--port <value>] [--secret-key <value>]` |
 
 ### 3.2. 技能发现
 | 命令 | 功能描述 | 语法 |
@@ -112,69 +112,20 @@ ${XDG_DATA_HOME:-$HOME/.local/share}/skill-hub/agent-skills
 
 ## 4. 命令详细规范
 
-### 4.0 serve - 以本地服务模式运行
+### 4.0 skill-hubd - 本地 daemon
 
-**语法**:
+`skill-hubd` 是唯一的 HTTP API 与 Web UI 服务宿主，不是 `skill-hub` 的子命令。
 
-- `skill-hub serve [--host <value>] [--port <value>] [--secret-key <value>] [--open-browser]`
-- `skill-hub serve register <name> [--host <value>] [--port <value>] [--secret-key <value>]`
-- `skill-hub serve start <name>`
-- `skill-hub serve stop <name>`
-- `skill-hub serve status [name]`
-- `skill-hub serve remove <name>`
-
-**选项**:
-- `--host <value>`: 监听地址，默认 `127.0.0.1`
-- `--port <value>`: 监听端口，默认 `5525`
-- `--secret-key <value>`: 远端推送密钥；未配置时禁止将本地仓库推送至远端，但不影响仓库拉取/同步和项目本地操作
-- `--open-browser`: 启动后尝试打开浏览器
-
-**功能描述**:
-
-启动 `skill-hub` 本地服务模式，提供：
-
-- 本地 HTTP API
-- 本地 Web UI
-- 供 CLI 复用的服务桥接入口
-
-当前实现补充：
-
-- `serve` 裸命令仍用于前台直接运行服务
-- `serve register/start/stop/status/remove` 用于管理命名服务实例
-- 服务实例注册表保存在 `~/.skill-hub/services.json`
-- `serve start` 会后台启动当前 `skill-hub` 可执行文件，并记录 `pid` 与日志文件路径
-- `serve register` 会保存 `secret_key` 用于后续 `serve start`，但 `serve status` 只显示 `push=blocked` 或 `push=secret-key`，不输出密钥明文
-- `serve status` 会输出服务地址与运行状态，其中：
-  - `running` 表示已记录 `pid` 且进程仍存活
-  - `stopped` 表示当前未记录运行中进程
-  - `stale` 表示注册表中仍有 `pid`，但对应进程已不存在
-- `serve remove` 只删除注册信息，不会删除日志文件；若服务仍在运行会拒绝删除
-- 当服务绑定在 loopback 地址（默认 `127.0.0.1` 或 `localhost`）时，HTTP server 会拒绝非 loopback Host header；显式绑定到非 loopback 地址时保留已有远程访问兼容行为
-- 当服务绑定在 loopback 地址时，修改类 HTTP 方法会拒绝非 loopback `Origin` / `Referer`，并拒绝 `Sec-Fetch-Site: cross-site`；CLI bridge 不携带浏览器来源头，继续保持兼容
-- 服务响应会设置基础安全响应头，包括 `Content-Security-Policy`、`X-Frame-Options`、`X-Content-Type-Options` 与 `Referrer-Policy`
-- 仅远端推送 API 需要 `secretKey`：未配置 `secretKey` 时，`POST /api/v1/skill-repository/push` 返回 `READ_ONLY`；配置后该请求必须携带 `X-Skill-Hub-Secret-Key`。当前阶段 Web UI 管理端不开放写入密钥能力，只展示只读或密钥错误；CLI bridge 可通过 `SKILL_HUB_SERVICE_SECRET_KEY` 传递该值
-- CLI bridge 会保留服务端返回的 `code/message`，因此远端推送被禁止或密钥错误会显示为 `READ_ONLY` / `UNAUTHORIZED`，不会被泛化成 `SYSTEM_ERROR`
-- 服务 API 会保留业务层 `pkg/errors` 稳定错误码；未找到类错误返回 `404`，权限类返回 `403`，网络或远端 Git 类返回 `502`，未实现返回 `501`，系统错误返回 `500`，其余输入或校验类错误返回 `400`
-
-当前 Web UI 支持：
-
-- 仓库管理
-- 技能列表查看
-- 项目列表查看
-- 项目 `status` / `use` / `apply` / `feedback` 操作
-
-**示例**:
 ```bash
-skill-hub serve
-skill-hub serve --port 6600
-skill-hub serve --host 127.0.0.1 --port 6600 --secret-key write-secret --open-browser
-skill-hub serve register local --host 127.0.0.1 --port 6600 --secret-key write-secret
-skill-hub serve start local
-skill-hub serve status
-skill-hub serve status local
-skill-hub serve stop local
-skill-hub serve remove local
+skill-hubd
+skill-hubd --port 6600
+skill-hubd --host 127.0.0.1 --port 6600 --secret-key write-secret
 ```
+
+- `--host` 默认 `127.0.0.1`，`--port` 默认 `5525`。
+- `--secret-key` 只保护 `POST /api/v1/skill-repository/push`；未配置时该 API 返回 `READ_ONLY`，拉取、同步和项目本地操作不受影响。
+- loopback 绑定会校验 Host、浏览器来源和安全响应头；CLI bridge 通过 `SKILL_HUB_SERVICE_URL` 与可选的 `SKILL_HUB_SERVICE_SECRET_KEY` 调用 daemon。
+- daemon 由系统服务管理器负责后台启动、停止与重启；不再维护 `~/.skill-hub/services.json` 或 `serve` 子命令。
 
 ### 4.1 init - 初始化本地仓库
 
@@ -265,7 +216,7 @@ skill-hub list --pattern 'magic*' --pattern 'git-*'
 
 **功能描述**:
 
-搜索远端技能入口。命令行仍作为用户入口；当本地 `skill-hub serve` 实例可用时，远端搜索交互会优先由服务实例统一承接，以复用本地托管的 `~/.skill-hub/` 上下文、远端访问策略和 Web/CLI 共用能力。
+搜索远端技能入口。命令行仍作为用户入口；当本地 `skill-hubd` 实例可用时，远端搜索交互会优先由服务实例统一承接，以复用本地托管的 `~/.skill-hub/` 上下文、远端访问策略和 Web/CLI 共用能力。
 
 该命令依赖`init`命令，如果检查本地仓库不存在，则提示需要先进行初始化
 
@@ -435,7 +386,7 @@ skill-hub sync-copies --canonical .agents/skills --scope . --json
 
 扫描 `scope` 下所有 `.agents/skills/<id>/` 技能目录中的 UTF-8 文本文件，报告 `file://`、`vscode://`、`/home/...`、`/Users/...` 等本机路径。`--fix` 只自动改写位于 `project-root` 内的普通本机路径和 `file://` 链接；`vscode://` 链接以及外部路径会标记为 `manual-review`。
 
-默认修复前会创建 `<file>.bak.<timestamp>` 备份。CLI 会先把 `scope` 和 `project-root` 按调用方当前工作目录解析为绝对路径，再发送给服务端，因此在本地 `serve` 实例可用时仍能正确操作调用方项目。
+默认修复前会创建 `<file>.bak.<timestamp>` 备份。CLI 会先把 `scope` 和 `project-root` 按调用方当前工作目录解析为绝对路径，再发送给服务端，因此在本地 `skill-hubd` 可用时仍能正确操作调用方项目。
 
 **示例**:
 ```bash
@@ -461,7 +412,7 @@ skill-hub lint . --paths --project-root "$PWD" --fix --dry-run --json
 
 聚合项目技能刷新状态，报告目标技能数量、已登记数量、未登记技能、`validate --links` 结果、`status` 摘要、重复技能冲突、绝对路径命中、本地 Markdown 链接问题、默认仓库以及默认仓库是否存在未提交或未推送内容。
 
-当本地 `serve` 实例可用时，CLI 会通过服务桥接执行审计聚合；CLI 会把 `scope`、`canonical`、`project-root` 解析为绝对路径后传给服务端。`--output` 文件由 CLI 在调用方侧写入，避免服务进程当前目录不同导致报告写错位置。
+当本地 `skill-hubd` 可用时，CLI 会通过服务桥接执行审计聚合；CLI 会把 `scope`、`canonical`、`project-root` 解析为绝对路径后传给服务端。`--output` 文件由 CLI 在调用方侧写入，避免服务进程当前目录不同导致报告写错位置。
 
 **示例**:
 ```bash
@@ -530,7 +481,7 @@ skill-hub remove --pattern 'git-*'
 
 `--links` 会解析技能目录内 Markdown 文件中的本地链接。外部 HTTP/HTTPS 链接默认跳过；本地链接会按源文件目录、技能目录、项目根目录依次解析，任一目标存在即视为通过。缺失目标会以 `source_file`、`line`、`link`、`resolved_path` 输出，JSON 报告中汇总为 `link_issues`。
 
-该命令与 `create` 配套，主要用于 `feedback` 前的本地校验，不负责校验仓库侧内容。当前本地 `serve` 实例可用时，CLI 会通过服务桥接执行 validate；CLI 会把 `project_path` 和 `project-root` 解析为绝对路径后传给服务端。
+该命令与 `create` 配套，主要用于 `feedback` 前的本地校验，不负责校验仓库侧内容。当前本地 `skill-hubd` 实例可用时，CLI 会通过服务桥接执行 validate；CLI 会把 `project_path` 和 `project-root` 解析为绝对路径后传给服务端。
 
 如果该技能未在`state.json`里项目工作区登记，则提示该技能非法
 
@@ -814,7 +765,7 @@ skill-hub prune
 
 **多仓库说明**：此命令仅处理默认仓库。如需同步指定仓库或所有启用仓库，请使用 `skill-hub repo sync`。
 
-本地执行时该命令依赖`init`命令，如果检查本地仓库不存在，则提示需要先进行初始化。本地 `serve` 实例可用时，CLI 会优先通过服务桥接执行默认仓库同步，以兼容客户端 HOME 中没有本地 skill-hub 配置的场景。
+本地执行时该命令依赖`init`命令，如果检查本地仓库不存在，则提示需要先进行初始化。本地 `skill-hubd` 可用时，CLI 会优先通过服务桥接执行默认仓库同步，以兼容客户端 HOME 中没有本地 skill-hub 配置的场景。
 
 
 **关键行为**:
@@ -856,7 +807,7 @@ skill-hub pull --check --json
 
 **多仓库说明**：默认推送到默认仓库（归档仓库）。可使用 `skill-hub repo default` 命令设置默认仓库。
 
-本地执行时该命令依赖`init`命令，如果检查本地仓库不存在，则提示需要先进行初始化。本地 `serve` 实例可用时，CLI 会优先通过服务桥接获取默认仓库状态并执行推送，以兼容客户端 HOME 中没有本地 skill-hub 配置的场景。
+本地执行时该命令依赖`init`命令，如果检查本地仓库不存在，则提示需要先进行初始化。本地 `skill-hubd` 实例可用时，CLI 会优先通过服务桥接获取默认仓库状态并执行推送，以兼容客户端 HOME 中没有本地 skill-hub 配置的场景。
 
 服务 API 中默认仓库推送为受保护写操作：
 
@@ -864,7 +815,7 @@ skill-hub pull --check --json
 - `POST /api/v1/skill-repository/push` 必须携带 `confirm: true`。
 - 请求可携带 `expected_changed_files`；服务端执行前会重新检查默认仓库状态，若文件列表已变化则拒绝推送。
 - 无待推送变更时服务端拒绝推送。
-- 未配置 `serve --secret-key` 时该推送 API 返回 `READ_ONLY`；仓库拉取/同步类 API 不受该密钥限制。
+- 未配置 `skill-hubd --secret-key` 时该推送 API 返回 `READ_ONLY`；仓库拉取/同步类 API 不受该密钥限制。
 
 **关键行为**:
 1. 检查默认仓库是否有未提交的更改（Modified、Untracked、Deleted 文件）或本地领先远端的提交
@@ -891,7 +842,7 @@ skill-hub push --dry-run --json
 
 ### 4.15 upgrade - 检测并升级 skill-hub
 
-**语法**: `skill-hub upgrade [--check] [--yes] [--version vX.Y.Z] [--dry-run] [--force] [--json] [--skip-agent-skills] [--no-restart-serve]`
+**语法**: `skill-hub upgrade [--check] [--yes] [--version vX.Y.Z] [--dry-run] [--force] [--json] [--skip-agent-skills]`
 
 **选项**:
 - `--check`: 仅检测 GitHub Releases 是否存在新版本，不修改文件。
@@ -901,15 +852,14 @@ skill-hub push --dry-run --json
 - `--force`: 允许重新安装当前版本或安装低于当前版本的指定版本。
 - `--json`: 输出机器可读检测或执行结果。
 - `--skip-agent-skills`: 升级二进制后跳过 release 内置 `skill-hub-*` workflow skills 同步。
-- `--no-restart-serve`: 升级后不自动重启已注册且正在运行的 `serve` 实例。
 
 **功能描述**:
 
-检测 `muidea/skill-hub` GitHub Releases，按当前 `GOOS/GOARCH` 下载对应 `.tar.gz` 发布包和 `.sha256` 文件。命令会校验发布包 sha256，解压后预执行新版 `skill-hub --version` 验证版本，再通过同目录临时文件 rename 替换当前二进制。
+检测 `muidea/skill-hub` GitHub Releases，按当前 `GOOS/GOARCH` 下载对应 `.tar.gz` 发布包和 `.sha256` 文件。命令会校验发布包 sha256，解压后预执行新版 `skill-hub` 与 `skill-hubd` 的版本检查，再通过可回滚事务替换同目录的两个二进制。
 
 Linux 与 macOS 支持自动替换当前运行中的二进制。Windows 当前不做运行中自动替换，命令会返回明确提示，用户需继续使用安装脚本或手动下载 Release 包。
 
-升级成功后，默认同步 release 内置 `skill-hub-*` workflow skills 到工具无关目录，并尝试重启已注册且正在运行的 `serve` 实例。该命令不依赖项目初始化，也不修改技能仓库、项目工作区或全局托管 skills 目录。
+升级成功后，默认同步 release 内置 `skill-hub-*` workflow skills 到工具无关目录，并安装同版本的 `skill-hub` 与 `skill-hubd`。运行中的 daemon 由系统服务管理器重启。该命令不依赖项目初始化，也不修改技能仓库、项目工作区或全局托管 skills 目录。
 
 **示例**:
 ```bash
@@ -949,7 +899,7 @@ skill-hub upgrade --version v0.8.1 --yes
 - `skill-hub git remote [url]` - 设置或更新远程仓库URL
 
 **功能描述**:
-提供底层Git仓库操作接口，适用于需要精细控制Git工作流的用户。这些命令默认操作本地技能仓库（`~/.skill-hub/repositories/<name>/`），与高级命令（如 `repo sync`、`push`）功能重叠但提供更多控制选项。其中 `git status --json`、`git sync --json`、`git pull --json` 在本地 `serve` 实例可用时会优先通过服务桥接读取或同步默认仓库，以便客户端 HOME 无本地配置时仍可用于脚本检查。
+提供底层Git仓库操作接口，适用于需要精细控制Git工作流的用户。这些命令默认操作本地技能仓库（`~/.skill-hub/repositories/<name>/`），与高级命令（如 `repo sync`、`push`）功能重叠但提供更多控制选项。其中 `git status --json`、`git sync --json`、`git pull --json` 在本地 `skill-hubd` 实例可用时会优先通过服务桥接读取或同步默认仓库，以便客户端 HOME 无本地配置时仍可用于脚本检查。
 
 **与高级命令的关系**:
 - `skill-hub pull` = `skill-hub git sync`（但包含注册表更新）

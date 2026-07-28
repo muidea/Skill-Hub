@@ -37,3 +37,4 @@ jobs:
         run: |
           ./bin/skill-hub --version
           ./bin/skill-hub --help | head -3
+          ./bin/skill-hubd --version

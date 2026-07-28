@@ -61,7 +61,8 @@ metadata:
         self._write_repo_skill(skill_id, "1.1.0", "repo-v2")
 
         before = self._status_item(skill_id)
-        assert before["status"] == "Outdated", before
+        assert before["status"] == "outdated", before
+        assert before["legacy_status"] == "Outdated", before
 
         apply_refresh = self.cmd.run("apply", ["--pattern", skill_id], cwd=str(self.project_dir))
         assert apply_refresh.success, f"refresh apply failed: {apply_refresh.stderr}\n{apply_refresh.stdout}"
@@ -72,7 +73,8 @@ metadata:
         assert 'version: "1.1.0"' in refreshed_content
 
         after = self._status_item(skill_id)
-        assert after["status"] == "Synced", after
+        assert after["status"] == "synced", after
+        assert after["legacy_status"] == "Synced", after
         assert after["local_version"] == "1.1.0"
         assert after["repo_version"] == "1.1.0"
 
@@ -99,7 +101,8 @@ metadata:
         )
 
         status = self._status_item(skill_id)
-        assert status["status"] == "ModifiedAgainstOutdatedRepo", status
+        assert status["status"] == "diverged", status
+        assert status["legacy_status"] == "ModifiedAgainstOutdatedRepo", status
         assert status["local_version"] == "1.0.0"
         assert status["repo_version"] == "1.1.0"
 

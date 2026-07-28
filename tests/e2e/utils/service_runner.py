@@ -5,11 +5,14 @@ import time
 import urllib.error
 import urllib.request
 import random
+from pathlib import Path
 
 
 class ServiceRunner:
     def __init__(self, binary_path: str, env: dict[str, str], cwd: str, host: str = "127.0.0.1", secret_key: str = ""):
-        self.binary_path = binary_path
+        binary = Path(binary_path)
+        daemon_name = "skill-hubd.exe" if binary.suffix.lower() == ".exe" else "skill-hubd"
+        self.daemon_path = str(binary.with_name(daemon_name))
         self.env = env.copy()
         self.cwd = cwd
         self.host = host
@@ -35,9 +38,10 @@ class ServiceRunner:
                 delete=False,
             )
             self.log_path = self.log_file.name
+            if not Path(self.daemon_path).is_file():
+                raise RuntimeError(f"skill-hubd binary not found: {self.daemon_path}")
             cmd = [
-                self.binary_path,
-                "serve",
+                self.daemon_path,
                 "--host",
                 self.host,
                 "--port",

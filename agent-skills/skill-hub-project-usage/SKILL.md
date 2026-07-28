@@ -206,25 +206,23 @@ SKILL_HUB_SERVICE_SECRET_KEY=<secretKey> skill-hub push
 
 ## Troubleshooting
 
-If a non-push command returns an old read-only error, the background `serve` process is probably outdated. Update or restart the running service; do not change the project workflow.
+If a non-push command returns an old read-only error, the background `skill-hubd` process is probably outdated. Update or restart the daemon; do not change the project workflow.
 
-For registered services:
+For a foreground daemon, or after restarting the system-managed daemon:
 
 ```bash
 skill-hub upgrade --check
 skill-hub upgrade --yes
-skill-hub serve status
-skill-hub serve stop <name>
-skill-hub serve start <name>
+skill-hubd --host 127.0.0.1 --port 5525
 ```
 
-For fresh installation, the latest installer restarts running registered `serve` instances:
+For fresh installation, the latest installer installs both binaries:
 
 ```bash
 curl -s https://raw.githubusercontent.com/muidea/skill-hub/master/scripts/install-latest.sh | bash
 ```
 
-`skill-hub upgrade --yes` also refreshes release-bundled `skill-hub-*` workflow skills. Manually started foreground `serve` processes must still be restarted manually.
+`skill-hub upgrade --yes` also refreshes release-bundled `skill-hub-*` workflow skills. Manually started foreground `skill-hubd` processes must still be restarted manually.
 
 ## Safety Rules
 

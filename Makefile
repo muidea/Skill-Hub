@@ -8,17 +8,21 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Build flags
-LDFLAGS = -X 'github.com/muidea/skill-hub/internal/cli.version=$(VERSION)' \
-          -X 'github.com/muidea/skill-hub/internal/cli.commit=$(COMMIT)' \
-          -X 'github.com/muidea/skill-hub/internal/cli.date=$(DATE)'
+LDFLAGS = -X 'github.com/muidea/skill-hub/internal/clis/skill-hub.version=$(VERSION)' \
+          -X 'github.com/muidea/skill-hub/internal/clis/skill-hub.commit=$(COMMIT)' \
+          -X 'github.com/muidea/skill-hub/internal/clis/skill-hub.date=$(DATE)' \
+          -X 'github.com/muidea/skill-hub/internal/services/skill-hubd.version=$(VERSION)' \
+          -X 'github.com/muidea/skill-hub/internal/services/skill-hubd.commit=$(COMMIT)' \
+          -X 'github.com/muidea/skill-hub/internal/services/skill-hubd.date=$(DATE)'
 
 # Build the binary
 build:
 	go build -ldflags="$(LDFLAGS)" -o bin/skill-hub ./application/skill-hub/cmd
+	go build -ldflags="$(LDFLAGS)" -o bin/skill-hubd ./application/skill-hubd/cmd
 
 # Clean build artifacts
 clean:
-	rm -f bin/skill-hub
+	rm -f bin/skill-hub bin/skill-hubd
 	rm -rf dist/
 
 # Run tests
@@ -45,7 +49,7 @@ test-verbose:
 # Run tests for specific package
 test-pkg:
 ifndef PKG
-	@echo "Usage: make test-pkg PKG=./internal/cli"
+	@echo "Usage: make test-pkg PKG=./internal/clis/skill-hub"
 	@exit 1
 endif
 	go test $(PKG) -v
@@ -92,7 +96,8 @@ install: build
 	@echo "Installing skill-hub to ~/.local/bin/"
 	@mkdir -p ~/.local/bin
 	cp bin/skill-hub ~/.local/bin/
-	@echo "✅ skill-hub installed to ~/.local/bin/skill-hub"
+	cp bin/skill-hubd ~/.local/bin/
+	@echo "✅ skill-hub and skill-hubd installed to ~/.local/bin/"
 	@echo "Make sure ~/.local/bin is in your PATH:"
 
 # Create release packages for all platforms (tar.gz + sha256)
@@ -106,6 +111,7 @@ release-all: clean
 	@echo "Building linux-amd64..."
 	@mkdir -p dist/tmp-linux-amd64
 	GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-linux-amd64/skill-hub ./application/skill-hub/cmd
+	GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-linux-amd64/skill-hubd ./application/skill-hubd/cmd
 	cp README.md dist/tmp-linux-amd64/
 	cp LICENSE dist/tmp-linux-amd64/
 	cp -R agent-skills dist/tmp-linux-amd64/
@@ -118,6 +124,7 @@ release-all: clean
 	@echo "Building linux-arm64..."
 	@mkdir -p dist/tmp-linux-arm64
 	GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-linux-arm64/skill-hub ./application/skill-hub/cmd
+	GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-linux-arm64/skill-hubd ./application/skill-hubd/cmd
 	cp README.md dist/tmp-linux-arm64/
 	cp LICENSE dist/tmp-linux-arm64/
 	cp -R agent-skills dist/tmp-linux-arm64/
@@ -130,6 +137,7 @@ release-all: clean
 	@echo "Building darwin-amd64..."
 	@mkdir -p dist/tmp-darwin-amd64
 	GOOS=darwin GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-darwin-amd64/skill-hub ./application/skill-hub/cmd
+	GOOS=darwin GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-darwin-amd64/skill-hubd ./application/skill-hubd/cmd
 	cp README.md dist/tmp-darwin-amd64/
 	cp LICENSE dist/tmp-darwin-amd64/
 	cp -R agent-skills dist/tmp-darwin-amd64/
@@ -142,6 +150,7 @@ release-all: clean
 	@echo "Building darwin-arm64..."
 	@mkdir -p dist/tmp-darwin-arm64
 	GOOS=darwin GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-darwin-arm64/skill-hub ./application/skill-hub/cmd
+	GOOS=darwin GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-darwin-arm64/skill-hubd ./application/skill-hubd/cmd
 	cp README.md dist/tmp-darwin-arm64/
 	cp LICENSE dist/tmp-darwin-arm64/
 	cp -R agent-skills dist/tmp-darwin-arm64/
@@ -154,6 +163,7 @@ release-all: clean
 	@echo "Building windows-amd64..."
 	@mkdir -p dist/tmp-windows-amd64
 	GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-windows-amd64/skill-hub.exe ./application/skill-hub/cmd
+	GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-windows-amd64/skill-hubd.exe ./application/skill-hubd/cmd
 	cp README.md dist/tmp-windows-amd64/
 	cp LICENSE dist/tmp-windows-amd64/
 	cp -R agent-skills dist/tmp-windows-amd64/
@@ -166,6 +176,7 @@ release-all: clean
 	@echo "Building windows-arm64..."
 	@mkdir -p dist/tmp-windows-arm64
 	GOOS=windows GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-windows-arm64/skill-hub.exe ./application/skill-hub/cmd
+	GOOS=windows GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o dist/tmp-windows-arm64/skill-hubd.exe ./application/skill-hubd/cmd
 	cp README.md dist/tmp-windows-arm64/
 	cp LICENSE dist/tmp-windows-arm64/
 	cp -R agent-skills dist/tmp-windows-arm64/

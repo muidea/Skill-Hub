@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/muidea/skill-hub/internal/config"
@@ -646,6 +647,13 @@ func (m *Manager) RebuildRepositoryIndex(name string) error {
 		return errors.Wrap(err, "RebuildRepositoryIndex: 获取仓库索引路径失败")
 	}
 
+	// registry.json is a local derived index. Keep it out of a cloned skill
+	// repository's worktree status so it cannot block a safe fast-forward pull.
+	// A repository that intentionally tracks registry.json remains authoritative:
+	// Git ignore rules do not suppress modifications to tracked files.
+	if err := excludeLocalRegistry(repoRegistryPath); err != nil {
+		return errors.Wrap(err, "RebuildRepositoryIndex: 忽略本地仓库索引失败")
+	}
 	if err := os.WriteFile(repoRegistryPath, registryData, 0644); err != nil {
 		return errors.Wrap(err, "RebuildRepositoryIndex: 写入仓库索引失败")
 	}
@@ -660,6 +668,37 @@ func (m *Manager) RebuildRepositoryIndex(name string) error {
 	}
 
 	return nil
+}
+
+func excludeLocalRegistry(registryPath string) error {
+	repoDir := filepath.Dir(registryPath)
+	gitDir := filepath.Join(repoDir, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	excludePath := filepath.Join(gitDir, "info", "exclude")
+	contents, err := os.ReadFile(excludePath)
+	if os.IsNotExist(err) {
+		contents = nil
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, line := range strings.Split(string(contents), "\n") {
+		if strings.TrimSpace(line) == "/registry.json" {
+			return nil
+		}
+	}
+	if len(contents) > 0 && !strings.HasSuffix(string(contents), "\n") {
+		contents = append(contents, '\n')
+	}
+	contents = append(contents, []byte("/registry.json\n")...)
+	if err := os.MkdirAll(filepath.Dir(excludePath), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(excludePath, contents, 0644)
 }
 
 func loadRegistrySkills(repo config.RepositoryConfig) ([]spec.SkillMetadata, bool) {

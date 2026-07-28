@@ -47,8 +47,8 @@ Based on the business scenarios defined in the repo test documents and current C
    - **use**: Only updates state.json; skill files are not copied until `apply` is run.
 
 7. **Service Mode** (`test_service_mode.py`)
-   - `skill-hub serve` health check
-   - `skill-hub serve register/start/status/stop/remove` instance management flow
+   - `skill-hubd` health check
+   - Web UI 与 daemon 生命周期验证
    - Web UI homepage availability
    - Web UI page-level structure checks for the catalog total, admin repo form, project workflow controls, and no admin secretKey write entry
    - CLI bridge for `repo list` / `repo list --json` / `list` / `status`

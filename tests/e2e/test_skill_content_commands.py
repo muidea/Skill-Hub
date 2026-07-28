@@ -122,7 +122,7 @@ class TestStatusSkillContent:
 
         result = self.cmd.run("status", cwd=str(self.project_dir))
         assert result.success, f"status failed: {result.stderr}"
-        assert "Modified" in result.stdout, "子目录新增文件后 status 应显示 Modified"
+        assert "modified" in result.stdout, "子目录新增文件后 status 应显示 modified"
 
 
 class TestUseOnlyUpdatesState:

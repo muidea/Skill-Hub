@@ -1,0 +1,338 @@
+package service
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/muidea/skill-hub/internal/pkg/projectport"
+	"github.com/muidea/skill-hub/internal/pkg/projectstateport"
+	"github.com/muidea/skill-hub/internal/pkg/repositoryport"
+	"github.com/muidea/skill-hub/pkg/errors"
+	"github.com/muidea/skill-hub/pkg/skill"
+	"github.com/muidea/skill-hub/pkg/spec"
+	"github.com/muidea/skill-hub/pkg/utils"
+)
+
+type ProjectStatusSummary = projectport.ProjectStatusSummary
+type SkillStatusItem = projectport.SkillStatusItem
+
+type ProjectStatus struct {
+	projectState projectstateport.ProjectState
+	repository   repositoryport.ProjectSource
+}
+
+func New(projectState projectstateport.ProjectState, repository repositoryport.ProjectSource) *ProjectStatus {
+	return &ProjectStatus{
+		projectState: projectState,
+		repository:   repository,
+	}
+}
+
+func (p *ProjectStatus) Inspect(projectPath, skillID string) (*ProjectStatusSummary, error) {
+	projectState, err := p.projectState.Find(projectPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "Inspect: 查找项目状态失败")
+	}
+	if projectState == nil {
+		return nil, errors.NewWithCode("Inspect", errors.ErrFileNotFound, "当前目录未在 skill-hub 中注册")
+	}
+
+	skills := projectState.Skills
+	if skillID != "" {
+		skillVars, ok := skills[skillID]
+		if !ok {
+			return nil, errors.NewWithCodef("Inspect", errors.ErrSkillNotFound, "技能 %s 未在当前项目中启用", skillID)
+		}
+		skills = map[string]spec.SkillVars{skillID: skillVars}
+	}
+
+	items := make([]SkillStatusItem, 0, len(skills))
+	for currentSkillID, skillVars := range skills {
+		item, err := p.inspectSkill(projectState.ProjectPath, currentSkillID, skillVars)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *item)
+
+		existing := projectState.Skills[currentSkillID]
+		existing.Status = spec.NormalizeSkillStatus(item.Status)
+		if item.LocalVersion != "" {
+			existing.Version = item.LocalVersion
+		}
+		if item.Status == spec.SkillStatusSynced {
+			if repoHash, hashErr := p.repoSkillHash(currentSkillID, skillVars.SourceRepository); hashErr == nil && repoHash != "" {
+				existing.AppliedHash = repoHash
+			}
+		}
+		projectState.Skills[currentSkillID] = existing
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].SkillID < items[j].SkillID
+	})
+
+	if err := p.projectState.Save(*projectState); err != nil {
+		return nil, errors.Wrap(err, "Inspect: 保存项目状态失败")
+	}
+
+	return &ProjectStatusSummary{
+		ProjectPath: projectState.ProjectPath,
+		Scope:       "project",
+		SkillCount:  len(items),
+		Items:       items,
+	}, nil
+}
+
+func (p *ProjectStatus) inspectSkill(projectPath, skillID string, skillVars spec.SkillVars) (*SkillStatusItem, error) {
+	agentsSkillDir := filepath.Join(projectPath, ".agents", "skills", skillID)
+	localSkillMdPath := filepath.Join(agentsSkillDir, "SKILL.md")
+
+	item := &SkillStatusItem{
+		SkillID:          skillID,
+		SourceRepository: skillVars.SourceRepository,
+		LocalPath:        localSkillMdPath,
+	}
+
+	repoSkillPath, repoVersion, repoHash, repoExists, err := p.getRepoSkillInfo(skillID, skillVars.SourceRepository)
+	if err != nil {
+		return nil, err
+	}
+	if repoExists {
+		item.RepoPath = repoSkillPath
+		item.RepoVersion = repoVersion
+	}
+
+	if _, err := os.Stat(localSkillMdPath); os.IsNotExist(err) {
+		setStatus(item, spec.StatusMissing, "missing_local_copy")
+		item.LocalVersion = "—"
+		return item, nil
+	}
+
+	repoSkillDir := filepath.Dir(repoSkillPath)
+	if repoExists {
+		equal, eqErr := skillDirsEqual(agentsSkillDir, repoSkillDir)
+		if eqErr == nil && !equal {
+			localVersion, localHash, localErr := getLocalSkillInfo(localSkillMdPath)
+			if localErr != nil {
+				setStatus(item, spec.StatusModified, "local_metadata_unreadable")
+				item.LocalVersion = "unknown"
+				return item, nil
+			}
+			item.LocalVersion = localVersion
+			if compareVersions(repoVersion, localVersion) > 0 {
+				if skillVars.AppliedHash != "" && localHash == skillVars.AppliedHash {
+					setStatus(item, spec.StatusOutdated, "source_newer")
+				} else {
+					setStatus(item, spec.StatusDiverged, "source_newer_and_local_modified")
+				}
+			} else {
+				setStatus(item, spec.StatusModified, "local_content_changed")
+			}
+			return item, nil
+		}
+	}
+
+	localVersion, localHash, err := getLocalSkillInfo(localSkillMdPath)
+	if err != nil {
+		return nil, err
+	}
+	item.LocalVersion = localVersion
+
+	if !repoExists {
+		setStatus(item, spec.StatusModified, "source_missing")
+		return item, nil
+	}
+
+	status := determineSkillStatus(localVersion, localHash, repoVersion, repoHash)
+	setStatus(item, status, statusReason(status))
+	if item.Status == "" {
+		item.Status = spec.NormalizeSkillStatus(skillVars.Status)
+		if item.Status == "" {
+			item.Status = spec.StatusModified
+		}
+		item.LegacyStatus = spec.LegacyProjectSkillStatus(item.Status)
+		item.Reason = "status_unavailable"
+	}
+	return item, nil
+}
+
+func setStatus(item *SkillStatusItem, status, reason string) {
+	item.Status = spec.NormalizeSkillStatus(status)
+	item.LegacyStatus = spec.LegacyProjectSkillStatus(item.Status)
+	item.Reason = reason
+}
+
+func statusReason(status string) string {
+	switch spec.NormalizeSkillStatus(status) {
+	case spec.StatusSynced:
+		return "source_and_target_match"
+	case spec.StatusOutdated:
+		return "source_newer"
+	case spec.StatusModified:
+		return "local_content_changed"
+	default:
+		return ""
+	}
+}
+
+func (p *ProjectStatus) repoSkillHash(skillID, sourceRepository string) (string, error) {
+	repoName, err := p.resolveSourceRepository(sourceRepository)
+	if err != nil {
+		return "", err
+	}
+	repoPath, err := p.repository.Path(repoName)
+	if err != nil {
+		return "", err
+	}
+	repoSkillDir := filepath.Join(repoPath, "skills", skillID)
+	if _, err := os.Stat(filepath.Join(repoSkillDir, "SKILL.md")); os.IsNotExist(err) {
+		return "", nil
+	}
+	return skill.DirectoryContentHash(repoSkillDir)
+}
+
+func (p *ProjectStatus) getRepoSkillInfo(skillID, sourceRepository string) (string, string, string, bool, error) {
+	repoName, err := p.resolveSourceRepository(sourceRepository)
+	if err != nil {
+		return "", "", "", false, errors.Wrap(err, "getRepoSkillInfo: 获取来源仓库失败")
+	}
+
+	repoPath, err := p.repository.Path(repoName)
+	if err != nil {
+		return "", "", "", false, errors.Wrap(err, "getRepoSkillInfo: 获取仓库路径失败")
+	}
+
+	repoSkillDir := filepath.Join(repoPath, "skills", skillID)
+	repoSkillPath := filepath.Join(repoSkillDir, "SKILL.md")
+	if _, err := os.Stat(repoSkillPath); os.IsNotExist(err) {
+		return repoSkillPath, "", "", false, nil
+	}
+
+	version, hash, err := getLocalSkillInfo(repoSkillPath)
+	if err != nil {
+		return "", "", "", false, err
+	}
+	return repoSkillPath, version, hash, true, nil
+}
+
+func (p *ProjectStatus) resolveSourceRepository(sourceRepository string) (string, error) {
+	if sourceRepository != "" {
+		return sourceRepository, nil
+	}
+
+	defaultRepo, err := p.repository.Default()
+	if err != nil {
+		return "", errors.Wrap(err, "resolveSourceRepository: 获取默认仓库失败")
+	}
+	return defaultRepo, nil
+}
+
+func getLocalSkillInfo(skillMdPath string) (string, string, error) {
+	content, err := os.ReadFile(skillMdPath)
+	if err != nil {
+		return "", "", utils.ReadFileErr(err, skillMdPath)
+	}
+
+	version := skill.ExtractVersion(content)
+	hashStr, err := skill.DirectoryContentHash(filepath.Dir(skillMdPath))
+	if err != nil {
+		return "", "", err
+	}
+	return version, hashStr, nil
+}
+
+func skillDirsEqual(dirA, dirB string) (bool, error) {
+	manifestA, err := buildSkillDirManifest(dirA)
+	if err != nil {
+		return false, err
+	}
+	manifestB, err := buildSkillDirManifest(dirB)
+	if err != nil {
+		return false, err
+	}
+	if len(manifestA) != len(manifestB) {
+		return false, nil
+	}
+	for relPath, hashA := range manifestA {
+		if hashB, ok := manifestB[relPath]; !ok || hashA != hashB {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func buildSkillDirManifest(dir string) (map[string]string, error) {
+	out := make(map[string]string)
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		relPath, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		out[relPath] = skill.ContentHash(content)
+		return nil
+	})
+	return out, err
+}
+
+func determineSkillStatus(localVersion, localHash, repoVersion, repoHash string) string {
+	if localHash != repoHash {
+		if compareVersions(localVersion, repoVersion) < 0 {
+			return spec.SkillStatusOutdated
+		}
+		return spec.SkillStatusModified
+	}
+
+	if compareVersions(localVersion, repoVersion) < 0 {
+		return spec.SkillStatusOutdated
+	}
+	return spec.SkillStatusSynced
+}
+
+func compareVersions(v1, v2 string) int {
+	v1 = strings.Trim(v1, `"`)
+	v2 = strings.Trim(v2, `" `)
+
+	if v1 == v2 {
+		return 0
+	}
+
+	v1Parts := strings.Split(v1, ".")
+	v2Parts := strings.Split(v2, ".")
+	for i := 0; i < len(v1Parts) && i < len(v2Parts); i++ {
+		num1 := 0
+		num2 := 0
+		fmt.Sscanf(v1Parts[i], "%d", &num1)
+		fmt.Sscanf(v2Parts[i], "%d", &num2)
+		if num1 > num2 {
+			return 1
+		}
+		if num1 < num2 {
+			return -1
+		}
+	}
+
+	if len(v1Parts) > len(v2Parts) {
+		return 1
+	}
+	if len(v1Parts) < len(v2Parts) {
+		return -1
+	}
+
+	if v1 > v2 {
+		return 1
+	}
+	return -1
+}
