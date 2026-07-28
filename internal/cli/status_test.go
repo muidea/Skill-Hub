@@ -217,3 +217,21 @@ func TestFilterGlobalStatusSummaryByIDs(t *testing.T) {
 		t.Errorf("nil summary should return nil")
 	}
 }
+
+func TestRenderGlobalStatusSummaryShowsVersion(t *testing.T) {
+	summary := &globalservice.StatusSummary{
+		Scope:      "global",
+		GlobalPath: "/home/.skill-hub/global/skills",
+		SkillCount: 1,
+		Items: []globalservice.StatusItem{
+			{SkillID: "demo-skill", Version: "1.2.3", Agent: "codex", Status: globalservice.StatusOK},
+		},
+	}
+
+	output := captureStdout(t, func() {
+		renderGlobalStatusSummary(summary)
+	})
+	if !strings.Contains(output, "版本") || !strings.Contains(output, "1.2.3") {
+		t.Fatalf("global status output must include version, got %q", output)
+	}
+}

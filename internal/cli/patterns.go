@@ -13,10 +13,9 @@ import (
 	pkgutils "github.com/muidea/skill-hub/pkg/utils"
 )
 
-// rejectPositionalPattern is a cobra Args validator used by every
-// pattern-aware command. Since the v0.8.13 flag migration, glob patterns are
-// accepted only via --pattern; any positional arg is a leftover from the
-// pre-flag shape and is rejected with a clear pointer to the new flag.
+// rejectPositionalPattern is retained for commands that only accept patterns.
+// Most pattern-aware commands now use validatePatternOrExactID so a single
+// literal skill ID can be supplied directly as a positional argument.
 //
 // Returning a clear error here is intentional: cobra's default
 // "unknown command" message would leave users wondering why their typed
@@ -119,6 +118,34 @@ func readPatternFlag(cmd *cobra.Command) ([]string, error) {
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// readPatternOrExactID accepts either repeatable --pattern values or one
+// literal positional skill ID. Glob syntax remains flag-only so shell
+// expansion cannot rewrite a batch request before Cobra sees it.
+func readPatternOrExactID(cmd *cobra.Command, args []string) ([]string, error) {
+	patterns, err := readPatternFlag(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if len(args) == 0 {
+		return patterns, nil
+	}
+	if len(args) > 1 {
+		return nil, errors.NewWithCode("readPatternOrExactID", errors.ErrInvalidInput, "只接受一个位置参数 ID；批量匹配请使用 --pattern")
+	}
+	if len(patterns) > 0 {
+		return nil, errors.NewWithCode("readPatternOrExactID", errors.ErrInvalidInput, "<id> 与 --pattern 不能同时使用")
+	}
+	if strings.ContainsAny(args[0], "*?[") {
+		return nil, errors.NewWithCode("readPatternOrExactID", errors.ErrInvalidInput, "位置参数仅支持精确 ID；通配匹配请使用 --pattern '<glob>'")
+	}
+	return []string{args[0]}, nil
+}
+
+func validatePatternOrExactID(cmd *cobra.Command, args []string) error {
+	_, err := readPatternOrExactID(cmd, args)
+	return err
 }
 
 func filterSkillIDsByPatterns(patterns []string, skillIDs []string) ([]string, error) {

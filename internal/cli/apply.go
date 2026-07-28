@@ -16,19 +16,19 @@ import (
 )
 
 var applyCmd = &cobra.Command{
-	Use:   "apply [--pattern ...]",
+	Use:   "apply [id] | --pattern <id-or-glob>...",
 	Short: "应用技能到项目",
 	Long: `根据 state.json 中的启用记录，将技能物理分发到当前项目的标准 .agents/skills 目录。
 
 不带 --pattern 时应用所有已启用技能；带 --pattern 时（类 glob，* 可跨 /，
 匹配技能 ID 字段）逐个应用匹配 pattern 的技能，单个失败不影响其它技能的继续处理。
 请引用带通配符的 pattern，避免 shell 在 skill-hub 启动前展开。`,
-	Args: rejectPositionalPattern,
+	Args: validatePatternOrExactID,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		force, _ := cmd.Flags().GetBool("force")
 		global, _ := cmd.Flags().GetBool("global")
-		patterns, err := readPatternFlag(cmd)
+		patterns, err := readPatternOrExactID(cmd, args)
 		if err != nil {
 			return err
 		}

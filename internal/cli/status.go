@@ -20,7 +20,7 @@ import (
 )
 
 var statusCmd = &cobra.Command{
-	Use:   "status [--pattern ...]",
+	Use:   "status [id] | --pattern <id-or-glob>...",
 	Short: "检查技能状态",
 	Long: `对比项目本地工作区文件与技能仓库源文件的差异，显示技能状态：
 - Synced: 本地与仓库一致
@@ -30,12 +30,12 @@ var statusCmd = &cobra.Command{
 
 不带 --pattern 时检查所有已启用技能；带 --pattern 时只显示 ID 匹配
 pattern 的已启用技能。请引用带通配符的 pattern，避免 shell 在 skill-hub 启动前展开。`,
-	Args: rejectPositionalPattern,
+	Args: validatePatternOrExactID,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		jsonOutput, _ := cmd.Flags().GetBool("json")
 		global, _ := cmd.Flags().GetBool("global")
-		patterns, err := readPatternFlag(cmd)
+		patterns, err := readPatternOrExactID(cmd, args)
 		if err != nil {
 			return err
 		}
@@ -415,17 +415,25 @@ func renderGlobalStatusSummary(summary *globalservice.StatusSummary) {
 	fmt.Printf("\n全局启用技能数: %d\n", summary.SkillCount)
 	fmt.Println("\n=== 全局技能状态 ===")
 	maxIDLength := 2
+	maxVersionLength := len("版本")
 	for _, item := range summary.Items {
 		if len(item.SkillID) > maxIDLength {
 			maxIDLength = len(item.SkillID)
 		}
+		if len(item.Version) > maxVersionLength {
+			maxVersionLength = len(item.Version)
+		}
 	}
-	fmt.Printf("%-*s %-10s 状态\n", maxIDLength, "ID", "Agent")
-	fmt.Println(strings.Repeat("-", maxIDLength+1+10+1+12))
+	fmt.Printf("%-*s %-*s %-10s 状态\n", maxIDLength, "ID", maxVersionLength, "版本", "Agent")
+	fmt.Println(strings.Repeat("-", maxIDLength+1+maxVersionLength+1+10+1+12))
 	for _, item := range summary.Items {
-		fmt.Printf("%-*s %-10s %s %s\n", maxIDLength, item.SkillID, item.Agent, globalStatusSymbol(item.Status), item.Status)
+		version := item.Version
+		if version == "" {
+			version = "—"
+		}
+		fmt.Printf("%-*s %-*s %-10s %s %s\n", maxIDLength, item.SkillID, maxVersionLength, version, item.Agent, globalStatusSymbol(item.Status), item.Status)
 		if item.Message != "" {
-			fmt.Printf("%-*s %-10s   %s\n", maxIDLength, "", "", item.Message)
+			fmt.Printf("%-*s %-*s %-10s   %s\n", maxIDLength, "", maxVersionLength, "", "", item.Message)
 		}
 	}
 	if len(summary.Orphaned) > 0 {

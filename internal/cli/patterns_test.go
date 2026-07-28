@@ -67,6 +67,49 @@ func TestReadPatternFlag_RejectsEmptyElement(t *testing.T) {
 	}
 }
 
+func TestReadPatternOrExactID(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		patterns  []string
+		want      []string
+		wantError bool
+	}{
+		{name: "no selector", want: nil},
+		{name: "exact positional id", args: []string{"demo-skill"}, want: []string{"demo-skill"}},
+		{name: "pattern flag", patterns: []string{"demo-*"}, want: []string{"demo-*"}},
+		{name: "positional glob rejected", args: []string{"demo-*"}, wantError: true},
+		{name: "multiple positional ids rejected", args: []string{"one", "two"}, wantError: true},
+		{name: "id and pattern rejected", args: []string{"demo"}, patterns: []string{"demo-*"}, wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newTestCmdWithPatternFlag(t)
+			for _, pattern := range tt.patterns {
+				if err := cmd.Flags().Set("pattern", pattern); err != nil {
+					t.Fatalf("set pattern: %v", err)
+				}
+			}
+			got, err := readPatternOrExactID(cmd, tt.args)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("readPatternOrExactID() error = %v, wantError %v", err, tt.wantError)
+			}
+			if tt.wantError {
+				return
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("readPatternOrExactID() = %#v, want %#v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Fatalf("readPatternOrExactID()[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestRejectPositionalPattern(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cases := []struct {

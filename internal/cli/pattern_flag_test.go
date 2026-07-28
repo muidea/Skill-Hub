@@ -11,26 +11,23 @@ import (
 	"github.com/muidea/skill-hub/pkg/spec"
 )
 
-// TestListRejectsPositionalPattern verifies that `list magic*` (positional)
-// is rejected by the cobra Args validator, since v0.8.13 only accepts
-// --pattern. We test the Args validator directly to keep this a pure unit
-// test that does not depend on the list backend.
-func TestListRejectsPositionalPattern(t *testing.T) {
+func TestListAcceptsExactIDAndRejectsPositionalGlob(t *testing.T) {
 	cases := []struct {
-		name string
-		args []string
+		name    string
+		args    []string
+		wantErr bool
 	}{
-		{"single wildcard", []string{"magic*"}},
-		{"single literal", []string{"foo"}},
-		{"two args", []string{"a", "b"}},
+		{"single literal", []string{"foo"}, false},
+		{"single wildcard", []string{"magic*"}, true},
+		{"two args", []string{"a", "b"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			err := listCmd.Args(listCmd, c.args)
-			if err == nil {
-				t.Fatalf("expected error for args=%v, got nil", c.args)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("listCmd.Args(%v) error = %v, wantErr %v", c.args, err, c.wantErr)
 			}
-			if !strings.Contains(err.Error(), "--pattern") {
+			if c.wantErr && !strings.Contains(err.Error(), "--pattern") {
 				t.Errorf("error should mention --pattern: %v", err)
 			}
 		})
@@ -49,43 +46,26 @@ func TestUseAcceptsPositionalExactID(t *testing.T) {
 	}
 }
 
-func TestStatusRejectsPositionalPattern(t *testing.T) {
-	err := statusCmd.Args(statusCmd, []string{"magic*"})
-	if err == nil {
-		t.Fatalf("expected error for positional arg, got nil")
+func TestPatternCommandsAcceptExactIDAndRejectPositionalGlob(t *testing.T) {
+	commands := []struct {
+		name string
+		cmd  *cobra.Command
+	}{
+		{"status", statusCmd},
+		{"apply", applyCmd},
+		{"feedback", feedbackCmd},
+		{"validate", validateCmd},
 	}
-	if !strings.Contains(err.Error(), "--pattern") {
-		t.Errorf("error should mention --pattern: %v", err)
-	}
-}
-
-func TestApplyRejectsPositionalPattern(t *testing.T) {
-	err := applyCmd.Args(applyCmd, []string{"magic*"})
-	if err == nil {
-		t.Fatalf("expected error for positional arg, got nil")
-	}
-	if !strings.Contains(err.Error(), "--pattern") {
-		t.Errorf("error should mention --pattern: %v", err)
-	}
-}
-
-func TestFeedbackRejectsPositionalPattern(t *testing.T) {
-	err := feedbackCmd.Args(feedbackCmd, []string{"magic*"})
-	if err == nil {
-		t.Fatalf("expected error for positional arg, got nil")
-	}
-	if !strings.Contains(err.Error(), "--pattern") {
-		t.Errorf("error should mention --pattern: %v", err)
-	}
-}
-
-func TestValidateRejectsPositionalPattern(t *testing.T) {
-	err := validateCmd.Args(validateCmd, []string{"magic*"})
-	if err == nil {
-		t.Fatalf("expected error for positional arg, got nil")
-	}
-	if !strings.Contains(err.Error(), "--pattern") {
-		t.Errorf("error should mention --pattern: %v", err)
+	for _, tt := range commands {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.cmd.Args(tt.cmd, []string{"demo-skill"}); err != nil {
+				t.Fatalf("exact ID should be accepted: %v", err)
+			}
+			err := tt.cmd.Args(tt.cmd, []string{"demo*"})
+			if err == nil || !strings.Contains(err.Error(), "--pattern") {
+				t.Fatalf("positional glob should require --pattern, got %v", err)
+			}
+		})
 	}
 }
 

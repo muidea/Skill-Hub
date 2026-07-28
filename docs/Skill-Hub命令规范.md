@@ -64,24 +64,24 @@ ${XDG_DATA_HOME:-$HOME/.local/share}/skill-hub/agent-skills
 | `lint` | 审计项目技能内容 | `skill-hub lint [scope] --paths [--project-root <dir>] [--fix] [--dry-run] [--no-backup] [--json]` |
 | `audit` | 生成技能刷新审计报告 | `skill-hub audit [scope] [--output <file>] [--format markdown|json] [--canonical <dir>] [--project-root <dir>]` |
 | `remove` | 移除项目技能 | `skill-hub remove <id>` 或 `skill-hub remove --pattern <glob>...` |
-| `validate` | 验证技能合规性 | `skill-hub validate --all [--fix] [--links] [--json]` 或 `skill-hub validate --pattern <glob>... [--fix] [--links] [--json]` |
+| `validate` | 验证技能合规性 | `skill-hub validate <id> [--fix] [--links] [--json]`、`skill-hub validate --all ...` 或 `skill-hub validate --pattern <glob>... ...` |
 | `use` | 使用本地仓库里的指定技能 | `skill-hub use <id> | --pattern <glob>... [--global] [--repo <name>] [--dry-run] [--json] [--non-interactive]` |
 
-补充：`use` / `remove` 支持 `--global`，用于本机全局 agent skills 目录；全局操作始终作用于已检测或已配置的 agent。`list` 仍只表示本地仓库中的可用 skill 清单，不存在项目或全局 scope。`use` / `validate` / `apply` / `feedback` / `status` / `list` 支持通过 `--pattern` 标志传入基于 `ID` 字段的 glob pattern（详见 §6）。除 `use <id>` 外，位置参数形式 `list magic*` / `apply magic*` 等仍会被拒绝。
+补充：`use` / `remove` 支持 `--global`，用于本机全局 agent skills 目录；全局操作始终作用于已检测或已配置的 agent。`list` 仍只表示本地仓库中的可用 skill 清单，不存在项目或全局 scope。所有支持 `--pattern` 的命令也接受一个精确位置 ID；位置通配符（如 `list magic*` / `apply magic*`）仍会被拒绝，必须通过 `--pattern` 传入。
 
 
 ### 3.4. 技能状态
 | 命令 | 功能描述 | 语法 |
 |------|----------|------|
-| `status` | 检查技能状态 | `skill-hub status [--pattern <glob>...] [--verbose] [--json]` |
+| `status` | 检查技能状态 | `skill-hub status [id] | [--pattern <glob>...] [--verbose] [--json] [--global]` |
 
-补充：`status --global [--json]` 会检查全局期望状态与当前机器实际 agent skills 目录是否一致。
+补充：`status --global [--json]` 会检查全局期望状态与当前机器实际 agent skills 目录是否一致，并显示每个全局 skill 的版本。
 
 ### 3.5. 项目工作区-本地仓库交互
 | 命令 | 功能描述 | 语法 |
 |------|----------|------|
-| `apply` | 应用技能到项目 | `skill-hub apply [--pattern <glob>...] [--dry-run] [--force]` |
-| `feedback` | 将项目工作区技能修改内容更新至到本地仓库 | `skill-hub feedback --all [--dry-run] [--force] [--json]` 或 `skill-hub feedback --pattern <glob>... [--dry-run] [--force] [--json]` |
+| `apply` | 应用技能到项目 | `skill-hub apply [id] | [--pattern <glob>...] [--dry-run] [--force]` |
+| `feedback` | 将项目工作区技能修改内容更新至到本地仓库 | `skill-hub feedback <id> ...`、`skill-hub feedback --all ...` 或 `skill-hub feedback --pattern <glob>... ...` |
 
 补充：`apply --pattern <id> --global [--dry-run] [--force]` 会按 `global-state.json` 刷新全部已检测或已配置的本机 agent 全局 skills 目录。默认不覆盖没有 `.skill-hub-manifest.json` 的同名目录；`--force` 会先创建备份再覆盖。
 
@@ -607,7 +607,7 @@ skill-hub use git-expert --repo team-skills --dry-run --json --non-interactive
 
 ### 4.9 status - 检查技能状态
 
-**语法**: `skill-hub status [--pattern <id-or-glob>...] [--verbose] [--json] [--global]`
+**语法**: `skill-hub status [id] | [--pattern <id-or-glob>...] [--verbose] [--json] [--global]`
 
 **参数**:
 - `--pattern` (可选，可重复): 不传时检查全部；传 `**` 时匹配全部已启用技能；单字面量无通配符时按精确 ID 检查；含通配符或多个值时按当前项目或全局状态中的 `ID` 字段做 glob 匹配。详见 §6。
@@ -615,7 +615,7 @@ skill-hub use git-expert --repo team-skills --dry-run --json --non-interactive
 **选项**:
 - `--verbose`: 显示详细差异信息。
 - `--json`: 以机器可读 JSON 输出状态摘要，字段包含 `skill_id`、`status`、`local_version`、`repo_version`、`local_path`、`repo_path`、`source_repository` 等。
-- `--global`: 检查本机全局期望状态与实际 agent skills 目录是否一致。
+- `--global`: 检查本机全局期望状态与实际 agent skills 目录是否一致；文本表格会显示全局技能版本。
 
 **功能描述**:
 
@@ -650,7 +650,7 @@ skill-hub use git-expert --repo team-skills --dry-run --json --non-interactive
 skill-hub status
 
 # 检查特定技能状态
-skill-hub status --pattern git-expert
+skill-hub status git-expert
 
 # 显示详细差异
 skill-hub status --verbose
@@ -660,12 +660,12 @@ skill-hub status --json
 
 # 检查本机全局技能一致性
 skill-hub status --global
-skill-hub status --pattern git-expert --global
+skill-hub status git-expert --global
 ```
 
 ### 4.10 apply - 应用技能到项目工作区
 
-**语法**: `skill-hub apply [--pattern <id-or-glob>...] [--dry-run] [--force] [--global]`
+**语法**: `skill-hub apply [id] | [--pattern <id-or-glob>...] [--dry-run] [--force] [--global]`
 
 **参数**:
 - `--pattern` (可选，可重复): 不传时刷新全部已启用技能；传 `**` 时匹配全部已启用技能；单字面量无通配符时按精确 ID 刷新；含通配符或多个值时按当前项目或全局状态中的 `ID` 字段做 glob 匹配，逐个处理并打印成功/失败汇总。详见 §6。
@@ -1011,7 +1011,7 @@ skill-hub git remote https://github.com/your-username/skills-repo.git
 - `feedback --pattern <glob>...`
 - `validate --pattern <glob>...`
 
-**为什么通配符要用 `--pattern`**：`pattern` 形如 `magic*` 在大多数 shell 中会被提前展开为 cwd 下的文件名，再交给 CLI 进程，破坏 glob 语义。`use <id>` 仅接受一个精确 ID；`list magic*` / `use foo*` / `apply magic*` 等位置通配符会被拒绝并提示改用 `--pattern`。带通配符的 flag 值仍应引用，例如 `--pattern 'magic*'`；如果不引用，shell 仍可能在 skill-hub 启动前展开它。
+**为什么通配符要用 `--pattern`**：`pattern` 形如 `magic*` 在大多数 shell 中会被提前展开为 cwd 下的文件名，再交给 CLI 进程，破坏 glob 语义。所有 pattern 命令都接受一个精确位置 ID，例如 `status git-expert`；`list magic*` / `use foo*` / `apply magic*` 等位置通配符会被拒绝并提示改用 `--pattern`。带通配符的 flag 值仍应引用，例如 `--pattern 'magic*'`；如果不引用，shell 仍可能在 skill-hub 启动前展开它。
 
 **语法**：
 
@@ -1024,7 +1024,7 @@ skill-hub git remote https://github.com/your-username/skills-repo.git
 
 **保留规则**：
 
-- `use` 的单字面量 ID 可以写成位置参数：`use git-expert`；其他命令仍使用 `--pattern git-expert`。带通配符的 `use` 位置参数会被拒绝。
+- 所有 pattern 命令的单字面量 ID 都可以写成位置参数，例如 `use git-expert`、`status git-expert`、`apply git-expert`。位置参数不能与 `--pattern` 同时使用，且不接受通配符。
 - 单独的 `*` 会被拒绝（`ErrInvalidInput`），避免歧义。如需匹配全部请使用 `**`。
 - `--pattern` 的空字符串值（`--pattern ''`）会被拒绝（`ErrInvalidInput`）。
 - 语法错误（未闭合的 `[` 等）会立即返回 `ErrInvalidInput`，并在消息中标明出错 pattern。

@@ -15,7 +15,7 @@ import (
 )
 
 var listCmd = &cobra.Command{
-	Use:   "list [--pattern ...]",
+	Use:   "list [id] | --pattern <id-or-glob>...",
 	Short: "列出可用技能",
 	Long: `显示本地技能仓库中的所有技能，支持按仓库过滤和按 ID pattern 过滤。
 
@@ -34,11 +34,11 @@ var listCmd = &cobra.Command{
   skill-hub list --pattern 'magic*' --pattern 'git-*'  合并多个 pattern
   skill-hub list --pattern '**'      列出全部（同不带参数）
   skill-hub list --repo main         只显示 main 仓库的技能`,
-	Args: rejectPositionalPattern,
+	Args: validatePatternOrExactID,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		repoFilters, _ := cmd.Flags().GetStringSlice("repo")
-		patterns, err := readPatternFlag(cmd)
+		patterns, err := readPatternOrExactID(cmd, args)
 		if err != nil {
 			return err
 		}

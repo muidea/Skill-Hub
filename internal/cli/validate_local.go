@@ -16,7 +16,7 @@ import (
 )
 
 var validateCmd = &cobra.Command{
-	Use:   "validate --all | --pattern ...",
+	Use:   "validate <id> | --all | --pattern <id-or-glob>...",
 	Short: "验证本地新建技能的合规性",
 	Long: `验证指定技能在项目本地工作区中的文件是否合规，主要用于 create 之后、feedback 之前的本地校验。
 
@@ -32,7 +32,7 @@ var validateCmd = &cobra.Command{
   *        匹配零或多个任意字符
   ?        匹配恰好一个任意字符
   **       匹配全部`,
-	Args:              rejectPositionalPattern,
+	Args:              validatePatternOrExactID,
 	ValidArgsFunction: completeEnabledSkillIDsForCwd,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		opts := validateCLIOptions{
@@ -43,7 +43,7 @@ var validateCmd = &cobra.Command{
 			JSON:        mustGetBoolFlag(cmd, "json"),
 		}
 		opts.ProjectRoot, _ = cmd.Flags().GetString("project-root")
-		patterns, err := readPatternFlag(cmd)
+		patterns, err := readPatternOrExactID(cmd, args)
 		if err != nil {
 			return err
 		}

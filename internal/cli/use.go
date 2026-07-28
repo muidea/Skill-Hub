@@ -26,7 +26,7 @@ var useCmd = &cobra.Command{
 --non-interactive 和 --json 使用。此命令只更新状态，不直接分发文件；请随后执行 apply。`,
 	Args: validateUseArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		patterns, err := readPatternFlag(cmd)
+		patterns, err := readPatternOrExactID(cmd, args)
 		if err != nil {
 			return err
 		}
@@ -78,21 +78,12 @@ func init() {
 // validateUseArgs accepts one exact skill ID or one or more --pattern values,
 // but deliberately keeps glob patterns out of positional arguments.
 func validateUseArgs(cmd *cobra.Command, args []string) error {
-	patterns, err := readPatternFlag(cmd)
+	patterns, err := readPatternOrExactID(cmd, args)
 	if err != nil {
 		return err
 	}
 	if len(args) == 0 && len(patterns) == 0 {
 		return errors.NewWithCode("use", errors.ErrInvalidInput, "缺少技能 ID；请使用 use <id> 或 --pattern '<id-or-glob>'")
-	}
-	if len(args) > 1 {
-		return errors.NewWithCode("use", errors.ErrInvalidInput, "use 只接受一个位置参数 ID；批量匹配请使用 --pattern")
-	}
-	if len(args) == 1 && len(patterns) > 0 {
-		return errors.NewWithCode("use", errors.ErrInvalidInput, "<id> 与 --pattern 不能同时使用")
-	}
-	if len(args) == 1 && strings.ContainsAny(args[0], "*?") {
-		return errors.NewWithCode("use", errors.ErrInvalidInput, "位置参数仅支持精确 ID；通配匹配请使用 --pattern '<glob>'")
 	}
 	return nil
 }

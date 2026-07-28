@@ -26,7 +26,7 @@ var (
 )
 
 var feedbackCmd = &cobra.Command{
-	Use:   "feedback --all | --pattern ...",
+	Use:   "feedback <id> | --all | --pattern <id-or-glob>...",
 	Short: "将项目工作区技能修改内容更新至到本地仓库",
 	Long: `将项目工作区本地的技能修改同步回本地技能仓库。
 
@@ -49,10 +49,10 @@ var feedbackCmd = &cobra.Command{
   --pattern '<glob>'    反馈匹配 pattern 的技能（可重复）
 
 未命中任何技能时静默通过。`,
-	Args:              rejectPositionalPattern,
+	Args:              validatePatternOrExactID,
 	ValidArgsFunction: completeEnabledSkillIDsForCwd,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		patterns, err := readPatternFlag(cmd)
+		patterns, err := readPatternOrExactID(cmd, args)
 		if err != nil {
 			return err
 		}
