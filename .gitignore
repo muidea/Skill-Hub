@@ -32,6 +32,10 @@ validate
 
 !application/skill-hub
 !application/validate/cmd
+# Keep the Cobra CLI source directory visible; the generic `skill-hub` binary
+# rule above otherwise ignores newly added files beneath this directory.
+!internal/clis/skill-hub/
+!internal/clis/skill-hub/**
 
 !docs/Skill-Hub命令规范.md
 
