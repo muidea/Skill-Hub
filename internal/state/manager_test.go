@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/muidea/skill-hub/pkg/fs"
@@ -482,4 +483,48 @@ func TestStateManager(t *testing.T) {
 			t.Fatalf("normalized project path = %q, want %q", allStates[validProject].ProjectPath, validProject)
 		}
 	})
+}
+
+func TestFindProjectByPathReportsInvalidStateFile(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	if err := os.WriteFile(statePath, []byte(`{"broken":`), 0644); err != nil {
+		t.Fatalf("write invalid state: %v", err)
+	}
+
+	manager := &StateManager{statePath: statePath, fs: &fs.RealFileSystem{}}
+	_, err := manager.FindProjectByPath(t.TempDir())
+	if err == nil {
+		t.Fatal("FindProjectByPath() error = nil, want invalid-state error")
+	}
+	if !strings.Contains(err.Error(), "请先备份并修复") {
+		t.Fatalf("FindProjectByPath() error = %q, want recovery guidance", err)
+	}
+}
+
+func TestSaveProjectStateNormalizesRelativeProjectPath(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	manager := &StateManager{statePath: statePath, fs: &fs.RealFileSystem{}}
+	relativePath := "magicSuite"
+	absPath, err := filepath.Abs(relativePath)
+	if err != nil {
+		t.Fatalf("abs project path: %v", err)
+	}
+
+	if err := manager.SaveProjectState(&spec.ProjectState{
+		ProjectPath: relativePath,
+		Skills:      map[string]spec.SkillVars{},
+	}); err != nil {
+		t.Fatalf("SaveProjectState() error = %v", err)
+	}
+
+	allStates, err := manager.LoadAllProjectStates()
+	if err != nil {
+		t.Fatalf("LoadAllProjectStates() error = %v", err)
+	}
+	if _, exists := allStates[relativePath]; exists {
+		t.Fatalf("relative project key %q must not be persisted", relativePath)
+	}
+	if state, exists := allStates[absPath]; !exists || state.ProjectPath != absPath {
+		t.Fatalf("normalized state = %#v, want absolute key %q", state, absPath)
+	}
 }

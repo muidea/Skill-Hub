@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -69,7 +70,7 @@ func (m *StateManager) LoadProjectState(projectPath string) (*spec.ProjectState,
 	// 解析所有项目状态
 	var allStates map[string]spec.ProjectState
 	if err := json.Unmarshal(data, &allStates); err != nil {
-		return nil, fmt.Errorf("解析状态文件失败: %w", err)
+		return nil, invalidStateFileError(m.statePath, err)
 	}
 
 	// 查找当前项目状态
@@ -96,7 +97,7 @@ func (m *StateManager) LoadAllProjectStates() (map[string]spec.ProjectState, err
 
 	var allStates map[string]spec.ProjectState
 	if err := json.Unmarshal(data, &allStates); err != nil {
-		return nil, fmt.Errorf("解析状态文件失败: %w", err)
+		return nil, invalidStateFileError(m.statePath, err)
 	}
 	if allStates == nil {
 		return map[string]spec.ProjectState{}, nil
@@ -106,23 +107,39 @@ func (m *StateManager) LoadAllProjectStates() (map[string]spec.ProjectState, err
 
 // SaveProjectState 保存项目状态
 func (m *StateManager) SaveProjectState(state *spec.ProjectState) error {
-	// 读取现有所有状态
-	allStates := make(map[string]spec.ProjectState)
-
-	if data, err := m.fs.ReadFile(m.statePath); err == nil {
-		if err := json.Unmarshal(data, &allStates); err != nil {
-			// 如果解析失败，使用空map
-			allStates = make(map[string]spec.ProjectState)
-		}
+	if state == nil {
+		return fmt.Errorf("保存项目状态失败: 项目状态不能为空")
 	}
+	projectPath, err := filepath.Abs(state.ProjectPath)
+	if err != nil {
+		return fmt.Errorf("保存项目状态失败: 获取项目绝对路径失败: %w", err)
+	}
+	normalizedState := *state
+	normalizedState.ProjectPath = projectPath
+	state = &normalizedState
 
-	// 更新当前项目状态
-	allStates[state.ProjectPath] = *state
+	return m.withWriteLock(func() error {
+		// 读取和写入必须在同一把跨进程锁内完成，否则两个 CLI/daemon
+		// 进程可能互相覆盖，或在直接写入期间留下不完整的 JSON。
+		allStates := make(map[string]spec.ProjectState)
+		if data, err := m.fs.ReadFile(m.statePath); err == nil {
+			if err := json.Unmarshal(data, &allStates); err != nil {
+				return invalidStateFileError(m.statePath, err)
+			}
+		}
 
-	return m.SaveAllProjectStates(allStates)
+		allStates[projectPath] = *state
+		return m.saveAllProjectStates(allStates)
+	})
 }
 
 func (m *StateManager) SaveAllProjectStates(allStates map[string]spec.ProjectState) error {
+	return m.withWriteLock(func() error {
+		return m.saveAllProjectStates(allStates)
+	})
+}
+
+func (m *StateManager) saveAllProjectStates(allStates map[string]spec.ProjectState) error {
 	data, err := json.MarshalIndent(allStates, "", "  ")
 	if err != nil {
 		return fmt.Errorf("序列化状态失败: %w", err)
@@ -133,11 +150,76 @@ func (m *StateManager) SaveAllProjectStates(allStates map[string]spec.ProjectSta
 		return utils.CreateDirErr(err, filepath.Dir(m.statePath))
 	}
 
+	if _, ok := m.fs.(*fs.RealFileSystem); ok {
+		if err := writeFileAtomically(m.statePath, data, 0644); err != nil {
+			return fmt.Errorf("原子写入状态文件失败: %w", err)
+		}
+		return nil
+	}
+
 	if err := m.fs.WriteFile(m.statePath, data, 0644); err != nil {
 		return fmt.Errorf("写入状态文件失败: %w", err)
 	}
 
 	return nil
+}
+
+func (m *StateManager) withWriteLock(write func() error) error {
+	// 仅真实文件系统需要跨进程锁；保留 mock 文件系统的可测试性。
+	if _, ok := m.fs.(*fs.RealFileSystem); !ok {
+		return write()
+	}
+
+	if err := os.MkdirAll(filepath.Dir(m.statePath), 0755); err != nil {
+		return utils.CreateDirErr(err, filepath.Dir(m.statePath))
+	}
+
+	lockFile, err := os.OpenFile(m.statePath+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return fmt.Errorf("打开状态文件锁失败: %w", err)
+	}
+	defer lockFile.Close()
+
+	if err := lockStateFile(lockFile); err != nil {
+		return fmt.Errorf("锁定状态文件失败: %w", err)
+	}
+	defer unlockStateFile(lockFile)
+
+	return write()
+}
+
+func writeFileAtomically(path string, data []byte, perm os.FileMode) (err error) {
+	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer func() {
+		if err != nil {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+
+	if err = temporary.Chmod(perm); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err = temporary.Write(data); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err = temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err = temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, path)
+}
+
+func invalidStateFileError(path string, err error) error {
+	return fmt.Errorf("项目状态文件 %q 格式错误；请先备份并修复该 JSON 文件: %w", path, err)
 }
 
 func (m *StateManager) PruneInvalidProjectStates() ([]string, error) {
@@ -226,7 +308,7 @@ func (m *StateManager) FindProjectByPath(path string) (*spec.ProjectState, error
 
 	var allStates map[string]spec.ProjectState
 	if err := json.Unmarshal(data, &allStates); err != nil {
-		return nil, fmt.Errorf("解析状态文件失败: %w", err)
+		return nil, invalidStateFileError(m.statePath, err)
 	}
 
 	// 递归向上查找

@@ -189,6 +189,25 @@ func TestEnsureProjectWorkspace(t *testing.T) {
 	})
 }
 
+func TestEnsureProjectWorkspaceReportsInvalidStateFile(t *testing.T) {
+	skillHubHome, _, projectDir := testutils.SetupTestSkillHub(t)
+	originalHome := os.Getenv("SKILL_HUB_HOME")
+	os.Setenv("SKILL_HUB_HOME", skillHubHome)
+	defer os.Setenv("SKILL_HUB_HOME", originalHome)
+
+	if err := os.WriteFile(filepath.Join(skillHubHome, "state.json"), []byte(`{"broken":`), 0644); err != nil {
+		t.Fatalf("write invalid state: %v", err)
+	}
+
+	_, err := EnsureProjectWorkspace(projectDir)
+	if err == nil {
+		t.Fatal("EnsureProjectWorkspace() error = nil, want invalid-state error")
+	}
+	if !contains(err.Error(), "state.json 是否为有效 JSON") {
+		t.Fatalf("EnsureProjectWorkspace() error = %q, want recovery guidance", err)
+	}
+}
+
 func TestShouldCreateNestedWorkspace(t *testing.T) {
 	parentDir := t.TempDir()
 	childWithWorkspace := filepath.Join(parentDir, "child-with-workspace")

@@ -202,7 +202,7 @@ func EnsureProjectWorkspace(cwd string) (*spec.ProjectState, error) {
 	// 检查项目是否真正存在于状态文件中
 	projectState, err := localRuntime.ProjectState().Find(cwd)
 	if err != nil {
-		return nil, errors.WrapWithCode(err, "EnsureProjectWorkspace", errors.ErrSystem, "查找项目失败")
+		return nil, errors.WrapWithCode(err, "EnsureProjectWorkspace", errors.ErrSystem, "查找项目失败：请检查 ~/.skill-hub/state.json 是否为有效 JSON")
 	}
 	// .agents/skills 是项目技能工作区的明确边界。若当前目录尚未登记、
 	// 但 Find 命中了父项目，不能把当前目录的独立技能目录误归属给父项目。
