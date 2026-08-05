@@ -49,16 +49,21 @@ metadata:
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0644); err != nil {
 		t.Fatalf("write skill: %v", err)
 	}
+	canonicalRegistry := []byte(`{"version":"1.0.0","skills":[]}`)
+	canonicalRegistryPath := filepath.Join(repoDir, "registry.json")
+	if err := os.WriteFile(canonicalRegistryPath, canonicalRegistry, 0644); err != nil {
+		t.Fatalf("write canonical registry: %v", err)
+	}
 
 	sr := &SkillRepository{repo: &Repository{path: repoDir}}
 	if err := sr.UpdateRegistry(); err != nil {
 		t.Fatalf("UpdateRegistry() error = %v", err)
 	}
 
-	repoRegistryPath := filepath.Join(repoDir, "registry.json")
-	data, err := os.ReadFile(repoRegistryPath)
+	cacheRegistryPath := filepath.Join(tmpDir, "cache", "repositories", "main", "registry.json")
+	data, err := os.ReadFile(cacheRegistryPath)
 	if err != nil {
-		t.Fatalf("read repo registry: %v", err)
+		t.Fatalf("read local cache registry: %v", err)
 	}
 
 	var registry spec.Registry
@@ -74,6 +79,14 @@ metadata:
 	}
 	if registry.Skills[0].ID != "indexed-skill" {
 		t.Fatalf("registry skill id = %q, want indexed-skill", registry.Skills[0].ID)
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "registry.json")); err != nil {
+		t.Fatalf("read legacy root registry: %v", err)
+	}
+	if data, err := os.ReadFile(canonicalRegistryPath); err != nil {
+		t.Fatalf("read canonical registry: %v", err)
+	} else if string(data) != string(canonicalRegistry) {
+		t.Fatalf("canonical registry was modified: %s", data)
 	}
 }
 

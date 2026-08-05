@@ -41,7 +41,7 @@ func TestRunRepoRebuildIndexDefaultsToArchiveRepo(t *testing.T) {
 		t.Fatalf("unexpected output: %q", output)
 	}
 
-	registry := readRegistry(t, filepath.Join(homeDir, "repositories", "main", "registry.json"))
+	registry := readRegistry(t, filepath.Join(homeDir, "cache", "repositories", "main", "registry.json"))
 	if len(registry.Skills) != 1 {
 		t.Fatalf("registry skill count = %d, want 1", len(registry.Skills))
 	}

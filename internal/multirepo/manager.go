@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 
 	"github.com/muidea/skill-hub/internal/config"
@@ -642,20 +641,16 @@ func (m *Manager) RebuildRepositoryIndex(name string) error {
 		return errors.Wrap(err, "RebuildRepositoryIndex: 序列化索引失败")
 	}
 
-	repoRegistryPath, err := config.GetRepositoryRegistryPath(name)
+	cacheRegistryPath, err := config.GetRepositoryCacheRegistryPath(name)
 	if err != nil {
-		return errors.Wrap(err, "RebuildRepositoryIndex: 获取仓库索引路径失败")
+		return errors.Wrap(err, "RebuildRepositoryIndex: 获取本地索引缓存路径失败")
 	}
 
-	// registry.json is a local derived index. Keep it out of a cloned skill
-	// repository's worktree status so it cannot block a safe fast-forward pull.
-	// A repository that intentionally tracks registry.json remains authoritative:
-	// Git ignore rules do not suppress modifications to tracked files.
-	if err := excludeLocalRegistry(repoRegistryPath); err != nil {
-		return errors.Wrap(err, "RebuildRepositoryIndex: 忽略本地仓库索引失败")
+	if err := os.MkdirAll(filepath.Dir(cacheRegistryPath), 0755); err != nil {
+		return errors.Wrap(err, "RebuildRepositoryIndex: 创建本地索引缓存目录失败")
 	}
-	if err := os.WriteFile(repoRegistryPath, registryData, 0644); err != nil {
-		return errors.Wrap(err, "RebuildRepositoryIndex: 写入仓库索引失败")
+	if err := os.WriteFile(cacheRegistryPath, registryData, 0644); err != nil {
+		return errors.Wrap(err, "RebuildRepositoryIndex: 写入本地索引缓存失败")
 	}
 
 	if m.config.MultiRepo.DefaultRepo == name {
@@ -670,72 +665,48 @@ func (m *Manager) RebuildRepositoryIndex(name string) error {
 	return nil
 }
 
-func excludeLocalRegistry(registryPath string) error {
-	repoDir := filepath.Dir(registryPath)
-	gitDir := filepath.Join(repoDir, ".git")
-	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-	excludePath := filepath.Join(gitDir, "info", "exclude")
-	contents, err := os.ReadFile(excludePath)
-	if os.IsNotExist(err) {
-		contents = nil
-	}
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	for _, line := range strings.Split(string(contents), "\n") {
-		if strings.TrimSpace(line) == "/registry.json" {
-			return nil
-		}
-	}
-	if len(contents) > 0 && !strings.HasSuffix(string(contents), "\n") {
-		contents = append(contents, '\n')
-	}
-	contents = append(contents, []byte("/registry.json\n")...)
-	if err := os.MkdirAll(filepath.Dir(excludePath), 0755); err != nil {
-		return err
-	}
-	return os.WriteFile(excludePath, contents, 0644)
-}
-
 func loadRegistrySkills(repo config.RepositoryConfig) ([]spec.SkillMetadata, bool) {
-	registryPath, err := config.GetRepositoryRegistryPath(repo.Name)
-	if err != nil {
-		return nil, false
+	paths := []func(string) (string, error){
+		config.GetRepositoryCacheRegistryPath,
+		config.GetRepositoryRegistryPath,
 	}
-
-	data, err := os.ReadFile(registryPath)
-	if err != nil {
-		return nil, false
-	}
-
-	var registry spec.Registry
-	if err := json.Unmarshal(data, &registry); err != nil {
-		return nil, false
-	}
-
-	if len(registry.Skills) == 0 {
-		return []spec.SkillMetadata{}, true
-	}
-
-	skills := make([]spec.SkillMetadata, 0, len(registry.Skills))
-	for _, metadata := range registry.Skills {
-		if metadata.ID == "" {
+	for _, registryPathForRepo := range paths {
+		registryPath, err := registryPathForRepo(repo.Name)
+		if err != nil {
 			continue
 		}
-		if metadata.Repository == "" {
-			metadata.Repository = repo.Name
+		data, err := os.ReadFile(registryPath)
+		if err != nil {
+			continue
 		}
-		if metadata.RepositoryPath == "" {
-			metadata.RepositoryPath = filepath.Join("skills", metadata.ID)
+
+		var registry spec.Registry
+		if err := json.Unmarshal(data, &registry); err != nil {
+			continue
 		}
-		skills = append(skills, metadata)
+
+		if len(registry.Skills) == 0 {
+			return []spec.SkillMetadata{}, true
+		}
+
+		skills := make([]spec.SkillMetadata, 0, len(registry.Skills))
+		for _, metadata := range registry.Skills {
+			if metadata.ID == "" {
+				continue
+			}
+			if metadata.Repository == "" {
+				metadata.Repository = repo.Name
+			}
+			if metadata.RepositoryPath == "" {
+				metadata.RepositoryPath = filepath.Join("skills", metadata.ID)
+			}
+			skills = append(skills, metadata)
+		}
+
+		return skills, true
 	}
 
-	return skills, true
+	return nil, false
 }
 
 // CheckSkillInDefaultRepository 检查技能是否在默认仓库中存在

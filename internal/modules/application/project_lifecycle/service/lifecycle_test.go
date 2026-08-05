@@ -73,7 +73,7 @@ func TestImportArchiveRefreshesIndexWhenSkillUnchanged(t *testing.T) {
 		t.Fatalf("summary = %#v, want unchanged=1 archived=0 valid=1 registered=0", summary)
 	}
 
-	registry := readLifecycleRegistry(t, filepath.Join(homeDir, "repositories", "main", "registry.json"))
+	registry := readLifecycleRegistry(t, filepath.Join(homeDir, "cache", "repositories", "main", "registry.json"))
 	if len(registry.Skills) != 1 {
 		t.Fatalf("registry skill count = %d, want 1", len(registry.Skills))
 	}

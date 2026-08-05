@@ -790,21 +790,36 @@ func (sr *SkillRepository) UpdateRegistry() error {
 
 	registry := buildRegistryFromSkills(skills)
 
-	repoPath := sr.repo.GetPath()
 	registryData, err := json.MarshalIndent(registry, "", "  ")
 	if err != nil {
 		return fmt.Errorf("序列化注册表失败: %w", err)
 	}
 
-	repoRegistryPath := filepath.Join(repoPath, "registry.json")
-	if err := os.WriteFile(repoRegistryPath, registryData, 0644); err != nil {
-		return fmt.Errorf("保存仓库注册表失败: %w", err)
+	cfg, err := config.GetConfig()
+	if err != nil {
+		return fmt.Errorf("获取配置失败: %w", err)
+	}
+	if cfg.MultiRepo == nil {
+		return fmt.Errorf("多仓库配置未初始化")
+	}
+	cacheRegistryPath, err := config.GetRepositoryCacheRegistryPath(cfg.MultiRepo.DefaultRepo)
+	if err != nil {
+		return fmt.Errorf("获取本地索引缓存路径失败: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(cacheRegistryPath), 0755); err != nil {
+		return fmt.Errorf("创建本地索引缓存目录失败: %w", err)
+	}
+	if err := os.WriteFile(cacheRegistryPath, registryData, 0644); err != nil {
+		return fmt.Errorf("保存本地索引缓存失败: %w", err)
 	}
 
 	rootRegistryPath, err := config.GetRegistryPath()
 	if err == nil {
+		if err := os.MkdirAll(filepath.Dir(rootRegistryPath), 0755); err != nil {
+			return fmt.Errorf("创建本地索引目录失败: %w", err)
+		}
 		if err := os.WriteFile(rootRegistryPath, registryData, 0644); err != nil {
-			return fmt.Errorf("保存根注册表失败: %w", err)
+			return fmt.Errorf("保存本地索引失败: %w", err)
 		}
 	}
 

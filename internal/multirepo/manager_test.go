@@ -211,6 +211,35 @@ func TestListSkillsInRepository_UsesRegistryIndex(t *testing.T) {
 	}
 }
 
+func TestListSkillsInRepository_PrefersLocalCacheOverRepositoryRegistry(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("SKILL_HUB_HOME", tmpDir)
+
+	repoDir := filepath.Join(tmpDir, "repositories", "main")
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatalf("创建仓库目录失败: %v", err)
+	}
+	writeRegistry(t, repoDir, []spec.SkillMetadata{{ID: "canonical-skill", Name: "Canonical"}})
+
+	cachePath := filepath.Join(tmpDir, "cache", "repositories", "main", "registry.json")
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
+		t.Fatalf("创建缓存目录失败: %v", err)
+	}
+	cacheRegistry := spec.Registry{Version: "1.0.0", Skills: []spec.SkillMetadata{{ID: "cached-skill", Name: "Cached"}}}
+	cacheData, err := json.Marshal(cacheRegistry)
+	if err != nil {
+		t.Fatalf("序列化缓存索引失败: %v", err)
+	}
+	if err := os.WriteFile(cachePath, cacheData, 0644); err != nil {
+		t.Fatalf("写入缓存索引失败: %v", err)
+	}
+
+	skills := listSkillsInRepository(config.RepositoryConfig{Name: "main"})
+	if len(skills) != 1 || skills[0].ID != "cached-skill" {
+		t.Fatalf("listSkillsInRepository() = %#v, want cached registry", skills)
+	}
+}
+
 func TestManager_RebuildRepositoryIndex(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("SKILL_HUB_HOME", tmpDir)
@@ -245,16 +274,21 @@ version: 1.0.0
 	if err := os.WriteFile(filepath.Join(repoDir, "SKILL.md"), []byte(content), 0644); err != nil {
 		t.Fatalf("写入技能文件失败: %v", err)
 	}
+	canonicalRegistryPath := filepath.Join(tmpDir, "repositories", "main", "registry.json")
+	canonicalRegistry := []byte(`{"version":"1.0.0","skills":[]}`)
+	if err := os.WriteFile(canonicalRegistryPath, canonicalRegistry, 0644); err != nil {
+		t.Fatalf("写入仓库索引失败: %v", err)
+	}
 
 	m := &Manager{config: cfg}
 	if err := m.RebuildRepositoryIndex("main"); err != nil {
 		t.Fatalf("RebuildRepositoryIndex() error = %v", err)
 	}
 
-	registryPath := filepath.Join(tmpDir, "repositories", "main", "registry.json")
+	registryPath := filepath.Join(tmpDir, "cache", "repositories", "main", "registry.json")
 	data, err := os.ReadFile(registryPath)
 	if err != nil {
-		t.Fatalf("读取仓库索引失败: %v", err)
+		t.Fatalf("读取本地索引缓存失败: %v", err)
 	}
 
 	var registry spec.Registry
@@ -264,6 +298,11 @@ version: 1.0.0
 
 	if len(registry.Skills) != 1 || registry.Skills[0].ID != "rebuilt-skill" {
 		t.Fatalf("unexpected registry contents: %#v", registry.Skills)
+	}
+	if data, err := os.ReadFile(canonicalRegistryPath); err != nil {
+		t.Fatalf("读取仓库索引失败: %v", err)
+	} else if string(data) != string(canonicalRegistry) {
+		t.Fatalf("仓库内 registry.json was modified: %s", data)
 	}
 }
 
@@ -312,10 +351,10 @@ version: 1.0.0
 		t.Fatalf("归档技能文件不存在: %v", err)
 	}
 
-	registryPath := filepath.Join(tmpDir, "repositories", "main", "registry.json")
+	registryPath := filepath.Join(tmpDir, "cache", "repositories", "main", "registry.json")
 	data, err := os.ReadFile(registryPath)
 	if err != nil {
-		t.Fatalf("读取仓库索引失败: %v", err)
+		t.Fatalf("读取本地索引缓存失败: %v", err)
 	}
 
 	var registry spec.Registry

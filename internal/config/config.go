@@ -182,12 +182,25 @@ func GetRegistryPath() (string, error) {
 }
 
 // GetRepositoryRegistryPath 获取指定仓库的索引文件路径
+//
+// 此路径位于仓库工作区内，用于读取仓库随 Git 管理的 registry.json。
+// 本地重建出的派生索引必须使用 GetRepositoryCacheRegistryPath，避免修改
+// 已跟踪文件并阻塞仓库同步。
 func GetRepositoryRegistryPath(repoName string) (string, error) {
 	repoDir, err := GetRepositoryPath(repoName)
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(repoDir, "registry.json"), nil
+}
+
+// GetRepositoryCacheRegistryPath 获取指定仓库本地派生索引的缓存路径。
+func GetRepositoryCacheRegistryPath(repoName string) (string, error) {
+	rootDir, err := GetRootDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(rootDir, "cache", "repositories", repoName, "registry.json"), nil
 }
 
 // GetStatePath 获取状态文件路径
